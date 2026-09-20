@@ -14,6 +14,10 @@ type Story = {
   published_at: string | null;
   discovered_at: string;
   duplicate_score: number | null;
+  importance_score: number | null;
+  fiji_relevance_score: number | null;
+  business_relevance_score: number | null;
+  aura_service_relevance_score: number | null;
   sources: { name: string } | null;
 };
 
@@ -23,13 +27,14 @@ export default async function StoriesPage() {
 
   const { data, error } = await supabase
     .from("stories")
-    .select("id,title,source_url,status,category,published_at,discovered_at,duplicate_score,sources(name)")
+    .select("id,title,source_url,status,category,published_at,discovered_at,duplicate_score,importance_score,fiji_relevance_score,business_relevance_score,aura_service_relevance_score,sources(name)")
     .order("discovered_at", { ascending: false })
     .limit(100);
 
   const stories = (data ?? []) as unknown as Story[];
   const discovered = stories.filter((story) => story.status === "discovered").length;
   const duplicates = stories.filter((story) => story.status === "duplicate").length;
+  const scored = stories.filter((story) => story.status === "scored").length;
 
   return (
     <main className="min-h-screen bg-[#f7f5f2] text-[#101114]">
@@ -46,9 +51,10 @@ export default async function StoriesPage() {
       </header>
 
       <section className="mx-auto max-w-7xl px-6 py-10">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-4">
           <Stat label="Latest loaded" value={stories.length} />
           <Stat label="New discoveries" value={discovered} />
+          <Stat label="AI scored" value={scored} />
           <Stat label="Duplicates blocked" value={duplicates} />
         </div>
 
@@ -73,6 +79,14 @@ export default async function StoriesPage() {
                     <span className="text-xs text-gray-400">{story.sources?.name ?? "Unknown source"}</span>
                   </div>
                   <h3 className="mt-2 text-base font-black leading-6">{story.title}</h3>
+                  {story.status === "scored" && (
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
+                      <Score label="Importance" value={story.importance_score} />
+                      <Score label="Fiji/Pacific" value={story.fiji_relevance_score} />
+                      <Score label="Business" value={story.business_relevance_score} />
+                      <Score label="Aura" value={story.aura_service_relevance_score} />
+                    </div>
+                  )}
                   <p className="mt-2 text-xs text-gray-400">
                     Published {story.published_at ? new Date(story.published_at).toLocaleString() : "unknown"} · Discovered {new Date(story.discovered_at).toLocaleString()}
                   </p>
@@ -107,11 +121,21 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function Score({ label, value }: { label: string; value: number | null }) {
+  return (
+    <span className="rounded-lg bg-[#f7f5f2] px-2.5 py-1">
+      {label}: {value == null ? "—" : Math.round(Number(value))}
+    </span>
+  );
+}
+
 function StatusBadge({ status }: { status: string }) {
   const cls = status === "duplicate"
     ? "bg-amber-100 text-amber-800"
     : status === "discovered"
       ? "bg-emerald-100 text-emerald-800"
-      : "bg-gray-100 text-gray-700";
+      : status === "scored"
+        ? "bg-blue-100 text-blue-800"
+        : "bg-gray-100 text-gray-700";
   return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>{status}</span>;
 }

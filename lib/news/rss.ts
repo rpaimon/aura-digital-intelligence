@@ -7,15 +7,33 @@ export type ParsedFeedItem = {
   publishedAt: string | null;
 };
 
+function fixMojibake(value: string) {
+  if (!/[ÃÂâ]/.test(value)) return value;
+
+  try {
+    return decodeURIComponent(
+      Array.from(value)
+        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+        .join("")
+    );
+  } catch {
+    return value;
+  }
+}
+
 function decodeEntities(value: string) {
-  return value
+  const decoded = value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)));
+    .replace(/&#(\d+);/g, (_, num) =>
+      String.fromCharCode(Number(num))
+    );
+
+  return fixMojibake(decoded);
 }
 
 function stripHtml(value: string) {
