@@ -1483,6 +1483,96 @@ async function searchGoogleNews(title) {
   );
 }
 
+
+function unwrapBingNewsUrl(value) {
+  const raw = decodeXml(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    const domain = hostnameOf(raw);
+
+    if (
+      (domain === "bing.com" || domain.endsWith(".bing.com")) &&
+      parsed.pathname.toLowerCase().includes("/news/apiclick.aspx")
+    ) {
+      const target = parsed.searchParams.get("url");
+      if (target) return target;
+    }
+
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
+async function searchBingNews(title) {
+  const normalized = normalizeSearchTitle(title);
+  const keywords = buildSearchQuery(title);
+  if (!normalized && !keywords) return [];
+
+  const queries = [
+    normalized ? `"${normalized.slice(0, 180)}"` : "",
+    keywords,
+  ].filter(Boolean);
+
+  const results = [];
+  const seen = new Set();
+
+  for (const query of queries) {
+    const url = `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=RSS&setlang=en-US`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; AuraDigitalIntelligence/1.0; +fact-check)",
+          Accept: "application/rss+xml, application/xml, text/xml, */*",
+        },
+        redirect: "follow",
+      });
+
+      if (!response.ok) continue;
+
+      const xml = await response.text();
+      const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 20);
+
+      for (const match of items) {
+        const block = match[1];
+        const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/i);
+        const linkMatch = block.match(/<link>([\s\S]*?)<\/link>/i);
+        const dateMatch = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+        const sourceMatch =
+          block.match(/<(?:News:Source|source)[^>]*>([\s\S]*?)<\/(?:News:Source|source)>/i);
+
+        const itemTitle = stripTags(titleMatch?.[1] || "");
+        const directUrl = unwrapBingNewsUrl(linkMatch?.[1] || "");
+        const domain = hostnameOf(directUrl);
+
+        if (!itemTitle || !directUrl || !domain || seen.has(directUrl)) continue;
+        if (!usablePublisherLink(directUrl)) continue;
+        if (titleSimilarity(title, itemTitle) < 0.16) continue;
+
+        seen.add(directUrl);
+        results.push({
+          title: itemTitle,
+          url: directUrl,
+          source_name: stripTags(sourceMatch?.[1] || domain || "Independent source"),
+          domain,
+          published_at: stripTags(dateMatch?.[1] || "") || null,
+          discovery: "bing-news-rss",
+        });
+      }
+    } catch {
+      // Try next query variant.
+    }
+  }
+
+  return results.sort(
+    (a, b) => titleSimilarity(title, b.title) - titleSimilarity(title, a.title)
+  );
+}
+
 async function resolvePublisherCandidateWithGdelt(storyTitle, candidate) {
   if (!candidate?.domain || candidate.domain === "news.google.com") return candidate;
 
@@ -1771,12 +1861,16 @@ async function discoverVerificationSources(story) {
   const originalUrl = story.source_url;
   const originalDomain = hostnameOf(originalUrl);
 
-  const [gdelt, google] = await Promise.all([
+  const [gdelt, google, bing] = await Promise.all([
     searchGdelt(story.title),
     searchGoogleNews(story.title),
+    searchBingNews(story.title),
   ]);
 
-  const candidates = [...gdelt];
+  // Bing News RSS often exposes the publisher target directly (or through a
+  // simple apiclick URL that we can unwrap), so prefer these direct candidates
+  // alongside GDELT before falling back to Google News resolution.
+  const candidates = [...gdelt, ...bing];
 
   // Google News gives excellent publisher hints but its RSS URLs are JS-mediated.
   // Try to turn the strongest publisher hints into direct GDELT URLs first.
@@ -1821,16 +1915,25 @@ async function collectIndependentEvidence(env, story) {
   const candidates = await discoverVerificationSources(story);
   const evidence = [];
   const acceptedDomains = new Set();
+  const attempts = [];
 
   for (const candidate of candidates) {
     if (evidence.length >= 3) break;
 
     const fetched = await fetchEvidenceText(env, candidate, story);
-    if (!fetched.text) continue;
-
     const finalCandidate = fetched.candidate || candidate;
     const finalDomain = finalCandidate.domain || hostnameOf(finalCandidate.url);
 
+    attempts.push({
+      title: finalCandidate.title,
+      domain: finalDomain || "",
+      url: finalCandidate.url,
+      discovery: finalCandidate.discovery,
+      fetch_method: fetched.fetch_method,
+      accepted: Boolean(fetched.text),
+    });
+
+    if (!fetched.text) continue;
     if (!finalDomain) continue;
     if (samePublisherDomain(finalCandidate.url, story.source_url)) continue;
     if (acceptedDomains.has(finalDomain)) continue;
@@ -1853,7 +1956,16 @@ async function collectIndependentEvidence(env, story) {
     });
   }
 
-  return evidence;
+  return {
+    evidence,
+    diagnostics: {
+      browserAvailable: browserRunAvailable(env),
+      candidateCount: candidates.length,
+      candidateDomains: candidates.map((item) => item.domain || hostnameOf(item.url)).filter(Boolean),
+      candidateDiscovery: candidates.map((item) => item.discovery || "unknown"),
+      attempts,
+    },
+  };
 }
 
 async function enqueueFactCheck(env, storyId, priority) {
@@ -2036,7 +2148,9 @@ async function factCheckStory(env, job, settings) {
       throw new Error("No completed research package found for this story");
     }
 
-    const evidence = await collectIndependentEvidence(env, story);
+    const retrieval = await collectIndependentEvidence(env, story);
+    const evidence = retrieval.evidence;
+    const retrievalDiagnostics = retrieval.diagnostics;
     const research =
       researchPackage.key_facts && typeof researchPackage.key_facts === "object"
         ? researchPackage.key_facts
@@ -2088,6 +2202,7 @@ async function factCheckStory(env, job, settings) {
           aiVerdict: "not-run-insufficient-sources",
           retrievalMethods: evidence.map((item) => item.fetch_method),
           evidenceDomains: evidence.map((item) => item.domain),
+          retrievalDiagnostics,
           sourceDiscovery: evidence.map((item) => ({
             title: item.title,
             url: item.url,
@@ -2106,6 +2221,9 @@ async function factCheckStory(env, job, settings) {
         ...saved,
         retrievalMethods: evidence.map((item) => item.fetch_method),
         evidenceDomains: evidence.map((item) => item.domain),
+        candidateCount: retrievalDiagnostics.candidateCount,
+        browserAvailable: retrievalDiagnostics.browserAvailable,
+        retrievalDiagnostics,
       };
     }
 
@@ -2172,6 +2290,7 @@ ${evidenceText.slice(0, 15000)}
         aiVerdict: aiPackage.verdict,
         retrievalMethods: evidence.map((item) => item.fetch_method),
         evidenceDomains: evidence.map((item) => item.domain),
+        retrievalDiagnostics,
         sourceDiscovery: evidence.map((item) => ({
           title: item.title,
           url: item.url,
@@ -2190,6 +2309,9 @@ ${evidenceText.slice(0, 15000)}
       ...saved,
       retrievalMethods: evidence.map((item) => item.fetch_method),
       evidenceDomains: evidence.map((item) => item.domain),
+      candidateCount: retrievalDiagnostics.candidateCount,
+      browserAvailable: retrievalDiagnostics.browserAvailable,
+      retrievalDiagnostics,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2384,7 +2506,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "fact-check-retrieval-v3-browser-run-json-mode",
+          "fact-check-retrieval-v4-bing-browser-diagnostics",
 
         model:
           env.AI_MODEL ||
@@ -2449,7 +2571,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "fact-check-retrieval-v3-browser-run-json-mode",
+        "fact-check-retrieval-v4-bing-browser-diagnostics",
 
       endpoints: [
         "GET /health",

@@ -8,8 +8,7 @@ set
   attempts = 0,
   started_at = null,
   finished_at = null,
-  error_message = null,
-  updated_at = now()
+  error_message = null
 where j.job_type = 'fact_check_story'
   and j.story_id in (
     select fc.story_id
