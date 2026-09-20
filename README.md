@@ -122,3 +122,7 @@ Production requires:
 - `CRON_SECRET`
 
 `SUPABASE_SECRET_KEY` is server-only and must never be exposed with a `NEXT_PUBLIC_` prefix.
+
+## Decision + Research stage
+
+The current automation stage adds deterministic priority decisions (`ignore`, `watch`, `research`) and a preliminary autonomous research agent using Cloudflare Workers AI. Before deploying this stage, run `supabase/migrations/002_decision_research.sql` in Supabase. Public auto-publishing remains off; fact checking is the next quality gate.

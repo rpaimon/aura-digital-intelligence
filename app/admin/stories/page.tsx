@@ -14,6 +14,9 @@ type Story = {
   published_at: string | null;
   discovered_at: string;
   duplicate_score: number | null;
+  priority_score: number | null;
+  decision: string | null;
+  decision_reason: string | null;
   importance_score: number | null;
   fiji_relevance_score: number | null;
   business_relevance_score: number | null;
@@ -27,14 +30,15 @@ export default async function StoriesPage() {
 
   const { data, error } = await supabase
     .from("stories")
-    .select("id,title,source_url,status,category,published_at,discovered_at,duplicate_score,importance_score,fiji_relevance_score,business_relevance_score,aura_service_relevance_score,sources(name)")
+    .select("id,title,source_url,status,category,published_at,discovered_at,duplicate_score,importance_score,fiji_relevance_score,business_relevance_score,aura_service_relevance_score,priority_score,decision,decision_reason,sources(name)")
     .order("discovered_at", { ascending: false })
     .limit(100);
 
   const stories = (data ?? []) as unknown as Story[];
   const discovered = stories.filter((story) => story.status === "discovered").length;
   const duplicates = stories.filter((story) => story.status === "duplicate").length;
-  const scored = stories.filter((story) => story.status === "scored").length;
+  const scored = stories.filter((story) => story.importance_score != null).length;
+  const research = stories.filter((story) => story.decision === "research").length;
 
   return (
     <main className="min-h-screen bg-[#f7f5f2] text-[#101114]">
@@ -51,11 +55,12 @@ export default async function StoriesPage() {
       </header>
 
       <section className="mx-auto max-w-7xl px-6 py-10">
-        <div className="grid gap-4 sm:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-5">
           <Stat label="Latest loaded" value={stories.length} />
           <Stat label="New discoveries" value={discovered} />
           <Stat label="AI scored" value={scored} />
           <Stat label="Duplicates blocked" value={duplicates} />
+          <Stat label="Research selected" value={research} />
         </div>
 
         <div className="mt-6 rounded-3xl border border-[#e5e1db] bg-white p-6">
@@ -77,9 +82,11 @@ export default async function StoriesPage() {
                     <StatusBadge status={story.status} />
                     <span className="text-xs font-bold text-gray-400">{story.category ?? "Uncategorised"}</span>
                     <span className="text-xs text-gray-400">{story.sources?.name ?? "Unknown source"}</span>
+                    {story.decision && <DecisionBadge decision={story.decision} />}
+                    {story.priority_score != null && <span className="text-xs font-black text-gray-600">Priority {Math.round(Number(story.priority_score))}</span>}
                   </div>
                   <h3 className="mt-2 text-base font-black leading-6">{story.title}</h3>
-                  {story.status === "scored" && (
+                  {story.importance_score != null && (
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold text-gray-600">
                       <Score label="Importance" value={story.importance_score} />
                       <Score label="Fiji/Pacific" value={story.fiji_relevance_score} />
@@ -87,6 +94,7 @@ export default async function StoriesPage() {
                       <Score label="Aura" value={story.aura_service_relevance_score} />
                     </div>
                   )}
+                  {story.decision_reason && <p className="mt-2 text-xs leading-5 text-gray-500">{story.decision_reason}</p>}
                   <p className="mt-2 text-xs text-gray-400">
                     Published {story.published_at ? new Date(story.published_at).toLocaleString() : "unknown"} · Discovered {new Date(story.discovered_at).toLocaleString()}
                   </p>
@@ -138,4 +146,13 @@ function StatusBadge({ status }: { status: string }) {
         ? "bg-blue-100 text-blue-800"
         : "bg-gray-100 text-gray-700";
   return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>{status}</span>;
+}
+
+function DecisionBadge({ decision }: { decision: string }) {
+  const cls = decision === "research"
+    ? "bg-violet-100 text-violet-800"
+    : decision === "watch"
+      ? "bg-sky-100 text-sky-800"
+      : "bg-gray-100 text-gray-600";
+  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>{decision}</span>;
 }

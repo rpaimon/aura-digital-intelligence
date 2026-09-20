@@ -71,6 +71,10 @@ create table public.stories (
   business_relevance_score numeric(5,2),
   aura_service_relevance_score numeric(5,2),
   duplicate_score numeric(5,2),
+  priority_score numeric(5,2),
+  decision text check (decision in ('ignore','watch','research')),
+  decision_reason text,
+  decided_at timestamptz,
   cluster_key text,
   created_at timestamptz not null default now()
 );
@@ -221,7 +225,10 @@ values
 ('minimum_source_count', '3'::jsonb),
 ('minimum_quality_score', '90'::jsonb),
 ('fiji_relevance_required', 'false'::jsonb),
-('daily_ai_budget_usd', '10'::jsonb)
+('daily_ai_budget_usd', '10'::jsonb),
+('watch_priority_threshold', '50'::jsonb),
+('research_priority_threshold', '72'::jsonb),
+('max_research_per_run', '2'::jsonb)
 on conflict (key) do nothing;
 
 -- Enable RLS.

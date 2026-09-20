@@ -49,7 +49,7 @@ export default async function DashboardPage() {
               </div>
               <h2 className="mt-4 text-3xl font-black">Automatic discovery is online.</h2>
               <p className="mt-3 max-w-2xl leading-7 text-white/65">
-                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. AI research and publishing come next.
+                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. Story scoring is online. The decision engine and autonomous research queue are now the next live stage; publishing remains protected.
               </p>
             </div>
             <div className="hidden rounded-2xl bg-white/10 px-4 py-3 text-sm md:block">
@@ -78,6 +78,7 @@ export default async function DashboardPage() {
               <h3 className="text-lg font-bold">Build sequence</h3>
               <div className="flex flex-wrap gap-2">
                 <Link href="/admin/stories" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Story inbox</Link>
+                <Link href="/admin/research" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Research queue</Link>
                 <Link href="/admin/sources" className="rounded-xl bg-[#111318] px-3 py-2 text-xs font-black text-white">Manage sources</Link>
               </div>
             </div>
@@ -86,8 +87,8 @@ export default async function DashboardPage() {
               <li>02 — Source manager ✓</li>
               <li>03 — News discovery worker ✓</li>
               <li>04 — Duplicate detection ✓</li>
-              <li>05 — Fiji + Aura relevance engine</li>
-              <li>06 — Research agent</li>
+              <li>05 — Fiji + Aura relevance engine ✓</li>
+              <li>06 — Decision engine + research agent ✓</li>
               <li>07 — Writer + fact checker</li>
               <li>08 — SEO + publishing</li>
             </ol>
