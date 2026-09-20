@@ -28,7 +28,10 @@ function sourcePayload(formData: FormData) {
   const source_type = clean(formData.get("source_type")) || "publication";
   const trustRaw = Number(clean(formData.get("trust_score")) || "70");
   const trust_score = Math.max(0, Math.min(100, Number.isFinite(trustRaw) ? trustRaw : 70));
+  const intervalRaw = Number(clean(formData.get("check_interval_minutes")) || "60");
+  const check_interval_minutes = Math.max(15, Math.min(1440, Number.isFinite(intervalRaw) ? intervalRaw : 60));
   const active = formData.get("active") === "on";
+  const auto_disable_on_failure = formData.get("auto_disable_on_failure") === "on";
 
   if (!name || !url) {
     throw new Error("Source name and website URL are required.");
@@ -43,6 +46,8 @@ function sourcePayload(formData: FormData) {
     source_type,
     trust_score,
     active,
+    check_interval_minutes,
+    auto_disable_on_failure,
   };
 }
 
@@ -51,7 +56,10 @@ export async function createSource(formData: FormData) {
   const supabase = await createClient();
   const payload = sourcePayload(formData);
 
-  const { error } = await supabase.from("sources").insert(payload);
+  const { error } = await supabase.from("sources").insert({
+    ...payload,
+    next_check_at: payload.active ? new Date().toISOString() : null,
+  });
   if (error) {
     redirect(`/admin/sources?error=${encodeURIComponent(error.message)}`);
   }
@@ -68,7 +76,13 @@ export async function updateSource(formData: FormData) {
 
   const supabase = await createClient();
   const payload = sourcePayload(formData);
-  const { error } = await supabase.from("sources").update(payload).eq("id", id);
+  const { error } = await supabase
+    .from("sources")
+    .update({
+      ...payload,
+      ...(payload.active ? { auto_disabled_at: null, next_check_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", id);
 
   if (error) {
     redirect(`/admin/sources?error=${encodeURIComponent(error.message)}`);

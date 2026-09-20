@@ -155,3 +155,7 @@ v7 is the core reliability fix. The worker no longer depends on the model produc
 Article Writer v1 generates drafts only from `safe_facts` belonging to APPROVED fact checks. HOLD/REJECT stories are blocked upstream and HOLD stories retry automatically on the configured schedule.
 
 Publishing Engine v1 adds a deterministic final quality gate, public `/news` and `/news/[slug]` routes, source cards, NewsArticle structured data, sitemap/robots support, scheduling, audit logs and manual/automatic publication modes. Automatic publishing intentionally defaults to `manual` until public-page quality has been observed on real approved stories. See `PUBLISHING_ENGINE_V1_SETUP.md`.
+
+## Source Network v1
+
+Source Network v1 expands discovery from a single feed to a curated multi-source network across AI, technology, cloud, web development, cybersecurity, Fiji and the wider Pacific. The scout now checks only due feeds in small staggered batches, limits first-pass backfill to recent stories, tracks per-source health, backs off after failures and can auto-disable repeatedly broken feeds. Run `supabase/migrations/011_source_network_v1.sql` after deployment. The Source Manager at `/admin/sources` shows health, next-check time, failure details and discovery counts.

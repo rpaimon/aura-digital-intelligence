@@ -51,7 +51,7 @@ export default async function DashboardPage() {
               </div>
               <h2 className="mt-4 text-3xl font-black">Automatic discovery is online.</h2>
               <p className="mt-3 max-w-2xl leading-7 text-white/65">
-                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. Story scoring is online. The decision engine and autonomous research agent are online. Multi-source fact checking is the live evidence gate. Approved stories flow into the verified-safe-facts article writer, deterministic final quality gate and protected public publishing engine.
+                Signed in as {user.email}. Curated RSS sources are scheduled in small batches with automatic health monitoring, failure backoff and duplicate protection. Story scoring is online. The decision engine and autonomous research agent are online. Multi-source fact checking is the live evidence gate. Approved stories flow into the verified-safe-facts article writer, deterministic final quality gate and protected public publishing engine.
               </p>
             </div>
             <div className="hidden rounded-2xl bg-white/10 px-4 py-3 text-sm md:block">
@@ -88,8 +88,8 @@ export default async function DashboardPage() {
             </div>
             <ol className="mt-5 space-y-3 text-sm text-gray-600">
               <li>01 — Database & authentication ✓</li>
-              <li>02 — Source manager ✓</li>
-              <li>03 — News discovery worker ✓</li>
+              <li>02 — Curated source network + health monitoring ✓</li>
+              <li>03 — Staggered news discovery worker ✓</li>
               <li>04 — Duplicate detection ✓</li>
               <li>05 — Fiji + Aura relevance engine ✓</li>
               <li>06 — Decision engine + research agent ✓</li>
