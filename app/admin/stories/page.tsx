@@ -21,6 +21,9 @@ type Story = {
   fiji_relevance_score: number | null;
   business_relevance_score: number | null;
   aura_service_relevance_score: number | null;
+  verification_status: string | null;
+  verification_confidence: number | null;
+  verification_source_count: number;
   sources: { name: string } | null;
 };
 
@@ -30,7 +33,7 @@ export default async function StoriesPage() {
 
   const { data, error } = await supabase
     .from("stories")
-    .select("id,title,source_url,status,category,published_at,discovered_at,duplicate_score,importance_score,fiji_relevance_score,business_relevance_score,aura_service_relevance_score,priority_score,decision,decision_reason,sources(name)")
+    .select("id,title,source_url,status,category,published_at,discovered_at,duplicate_score,importance_score,fiji_relevance_score,business_relevance_score,aura_service_relevance_score,priority_score,decision,decision_reason,verification_status,verification_confidence,verification_source_count,sources(name)")
     .order("discovered_at", { ascending: false })
     .limit(100);
 
@@ -84,6 +87,8 @@ export default async function StoriesPage() {
                     <span className="text-xs text-gray-400">{story.sources?.name ?? "Unknown source"}</span>
                     {story.decision && <DecisionBadge decision={story.decision} />}
                     {story.priority_score != null && <span className="text-xs font-black text-gray-600">Priority {Math.round(Number(story.priority_score))}</span>}
+                    {story.verification_status && <VerificationBadge status={story.verification_status} />}
+                    {story.verification_confidence != null && <span className="text-xs font-black text-gray-600">Verified {Math.round(Number(story.verification_confidence))}% · {story.verification_source_count} sources</span>}
                   </div>
                   <h3 className="mt-2 text-base font-black leading-6">{story.title}</h3>
                   {story.importance_score != null && (
@@ -156,3 +161,13 @@ function DecisionBadge({ decision }: { decision: string }) {
       : "bg-gray-100 text-gray-600";
   return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>{decision}</span>;
 }
+
+function VerificationBadge({ status }: { status: string }) {
+  const cls = status === "approve"
+    ? "bg-emerald-100 text-emerald-800"
+    : status === "reject"
+      ? "bg-red-100 text-red-800"
+      : "bg-amber-100 text-amber-800";
+  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${cls}`}>Fact {status}</span>;
+}
+

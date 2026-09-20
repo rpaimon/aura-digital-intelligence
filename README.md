@@ -30,12 +30,19 @@ Included:
 - Manual publishing mode by default
 - Kill switch setting by default
 
+Live now:
+
+- RSS/news feed ingestion
+- Duplicate protection
+- AI relevance scoring
+- Ignore / watch / research decisions
+- Autonomous research packages
+- Multi-source fact checking with APPROVE / HOLD / REJECT quality gates
+
 Not yet enabled:
 
-- News feed ingestion
-- AI research
-- AI writing
-- Fact checking
+- AI article writing
+- SEO generation
 - Automatic publishing
 - Public article pages
 - Google Search Console automation
@@ -76,24 +83,15 @@ Do not commit `.env.local`.
 
 ## Next build phase
 
-The next implementation should add:
+The ingestion, scoring, research and verification gates are now implemented. The next stage is:
 
-1. Source Manager UI
-2. RSS discovery worker
-3. Canonical URL and content hashing
-4. Duplicate clustering
-5. Fiji relevance scoring
-6. Aura-service relevance scoring
-7. Research queue
-8. AI research agent
-9. Fact checker
-10. Writer
-11. SEO generator
-12. Article editor
-13. Public blog
-14. Vercel Cron
-15. Cost controls
-16. Automatic publishing only after quality testing
+1. Article writer using only verified safe facts
+2. SEO title / description / internal-link generation
+3. Final quality score
+4. Article editor / monitoring UI
+5. Public article routes
+6. Controlled automatic publishing after quality testing
+7. Search and social distribution
 
 ## RSS automation block
 
@@ -125,4 +123,8 @@ Production requires:
 
 ## Decision + Research stage
 
-The current automation stage adds deterministic priority decisions (`ignore`, `watch`, `research`) and a preliminary autonomous research agent using Cloudflare Workers AI. Before deploying this stage, run `supabase/migrations/002_decision_research.sql` in Supabase. Public auto-publishing remains off; fact checking is the next quality gate.
+Deterministic priority decisions (`ignore`, `watch`, `research`) and the preliminary autonomous research agent use Cloudflare Workers AI. Run `supabase/migrations/002_decision_research.sql` before this stage.
+
+## Fact-check + verification stage
+
+Run `supabase/migrations/003_fact_check_verification.sql` before deploying the latest Worker. The verifier searches for independent coverage, retrieves evidence from distinct publishers, compares claims using structured JSON output, and stores a conservative `approve`, `hold`, or `reject` verdict. Approval requires the configured independent-source count and confidence threshold. Public auto-publishing remains off.

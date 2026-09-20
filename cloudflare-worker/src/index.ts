@@ -3,6 +3,7 @@
 const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const DEFAULT_BATCH = 6;
 const DEFAULT_RESEARCH_BATCH = 1;
+const DEFAULT_FACT_CHECK_BATCH = 1;
 
 function clampScore(value) {
   const n = Number(value);
@@ -58,7 +59,7 @@ async function runDiscovery(env) {
 async function getSettings(env) {
   const r = await sb(
     env,
-    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run)"
+    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence)"
   );
 
   if (!r.ok) {
@@ -66,6 +67,9 @@ async function getSettings(env) {
       watch: 50,
       research: 72,
       maxResearch: DEFAULT_RESEARCH_BATCH,
+      maxFactChecks: DEFAULT_FACT_CHECK_BATCH,
+      factCheckMinSources: 2,
+      factCheckApproveConfidence: 75,
     };
   }
 
@@ -93,6 +97,34 @@ async function getSettings(env) {
             map.max_research_per_run ??
             DEFAULT_RESEARCH_BATCH
         ) || DEFAULT_RESEARCH_BATCH
+      )
+    ),
+
+    maxFactChecks: Math.max(
+      1,
+      Math.min(
+        2,
+        Number(
+          env.MAX_FACT_CHECKS_PER_RUN ??
+            map.max_fact_checks_per_run ??
+            DEFAULT_FACT_CHECK_BATCH
+        ) || DEFAULT_FACT_CHECK_BATCH
+      )
+    ),
+
+    factCheckMinSources: Math.max(
+      1,
+      Math.min(
+        4,
+        Number(map.fact_check_min_sources ?? 2) || 2
+      )
+    ),
+
+    factCheckApproveConfidence: Math.max(
+      50,
+      Math.min(
+        95,
+        Number(map.fact_check_approve_confidence ?? 75) || 75
       )
     ),
   };
@@ -369,6 +401,79 @@ const RESEARCH_SCHEMA = {
     "claims_to_verify",
     "confidence",
     "recommended_angle",
+  ],
+};
+
+
+const FACT_CHECK_SCHEMA = {
+  type: "object",
+
+  properties: {
+    verdict: {
+      type: "string",
+      enum: ["approve", "hold", "reject"],
+    },
+
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 100,
+    },
+
+    summary: {
+      type: "string",
+    },
+
+    claim_checks: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          claim: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["supported", "partial", "conflicted", "unverified"],
+          },
+          explanation: { type: "string" },
+          source_indexes: {
+            type: "array",
+            items: { type: "number" },
+          },
+        },
+        required: ["claim", "status", "explanation", "source_indexes"],
+      },
+    },
+
+    conflicts: {
+      type: "array",
+      items: { type: "string" },
+    },
+
+    missing_evidence: {
+      type: "array",
+      items: { type: "string" },
+    },
+
+    safe_facts: {
+      type: "array",
+      items: { type: "string" },
+    },
+
+    writing_constraints: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+
+  required: [
+    "verdict",
+    "confidence",
+    "summary",
+    "claim_checks",
+    "conflicts",
+    "missing_evidence",
+    "safe_facts",
+    "writing_constraints",
   ],
 };
 
@@ -1085,6 +1190,12 @@ ${evidence.slice(
       );
     }
 
+    await enqueueFactCheck(
+      env,
+      story.id,
+      Number(job.priority ?? 50)
+    );
+
     await updateJob(
       env,
       job.id,
@@ -1142,6 +1253,484 @@ ${evidence.slice(
     } catch {}
 
     throw e;
+  }
+}
+
+
+function decodeXml(value) {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function stripTags(value) {
+  return decodeXml(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeSearchTitle(value) {
+  return String(value || "")
+    .replace(/â€™|â€˜/g, "'")
+    .replace(/â€œ|â€/g, '"')
+    .replace(/â€“|â€”/g, "-")
+    .replace(/Â/g, "")
+    .replace(/[^\p{L}\p{N}\s'\-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hostnameOf(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function samePublisherDomain(a, b) {
+  const left = hostnameOf(a);
+  const right = hostnameOf(b);
+  if (!left || !right) return false;
+  return left === right || left.endsWith(`.${right}`) || right.endsWith(`.${left}`);
+}
+
+function buildSearchQuery(title) {
+  const stop = new Set([
+    "the", "a", "an", "and", "or", "but", "to", "of", "in", "on", "for", "with",
+    "is", "are", "was", "were", "be", "as", "at", "by", "from", "it", "its", "this",
+    "that", "says", "new", "just", "about", "into", "after", "before", "how", "why",
+  ]);
+
+  const words = normalizeSearchTitle(title)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !stop.has(word));
+
+  return [...new Set(words)].slice(0, 8).join(" ");
+}
+
+async function searchGdelt(title) {
+  const query = buildSearchQuery(title);
+  if (!query) return [];
+
+  const url = new URL("https://api.gdeltproject.org/api/v2/doc/doc");
+  url.searchParams.set("query", query);
+  url.searchParams.set("mode", "ArtList");
+  url.searchParams.set("maxrecords", "12");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("sort", "HybridRel");
+  url.searchParams.set("timespan", "1week");
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: {
+        "User-Agent": "AuraDigitalIntelligence/1.0 (+fact-check)",
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const articles = Array.isArray(data?.articles) ? data.articles : [];
+
+    return articles
+      .filter((item) => typeof item?.url === "string" && typeof item?.title === "string")
+      .map((item) => ({
+        title: String(item.title),
+        url: String(item.url),
+        source_name: String(item.domain || hostnameOf(item.url) || "Independent source"),
+        domain: String(item.domain || hostnameOf(item.url) || "").toLowerCase(),
+        published_at: item.seendate ? String(item.seendate) : null,
+        discovery: "gdelt",
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function searchGoogleNews(title) {
+  const query = buildSearchQuery(title);
+  if (!query) return [];
+
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "AuraDigitalIntelligence/1.0 (+fact-check)",
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const xml = await response.text();
+    const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 12);
+
+    return items
+      .map((match) => {
+        const block = match[1];
+        const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/i);
+        const linkMatch = block.match(/<link>([\s\S]*?)<\/link>/i);
+        const sourceMatch = block.match(/<source(?:\s+url="([^"]+)")?[^>]*>([\s\S]*?)<\/source>/i);
+        const dateMatch = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+
+        const itemUrl = decodeXml(linkMatch?.[1] || "").trim();
+        const sourceUrl = decodeXml(sourceMatch?.[1] || "").trim();
+
+        return {
+          title: stripTags(titleMatch?.[1] || ""),
+          url: itemUrl,
+          source_name: stripTags(sourceMatch?.[2] || hostnameOf(sourceUrl) || "News source"),
+          domain: hostnameOf(sourceUrl) || hostnameOf(itemUrl),
+          published_at: stripTags(dateMatch?.[1] || "") || null,
+          discovery: "google-news-rss",
+        };
+      })
+      .filter((item) => item.title && item.url);
+  } catch {
+    return [];
+  }
+}
+
+async function discoverVerificationSources(story) {
+  const originalUrl = story.source_url;
+  const originalDomain = hostnameOf(originalUrl);
+
+  const primary = await searchGdelt(story.title);
+  const fallback = primary.length >= 5 ? [] : await searchGoogleNews(story.title);
+  const candidates = [...primary, ...fallback];
+
+  const unique = [];
+  const seenDomains = new Set();
+  const seenUrls = new Set();
+
+  for (const item of candidates) {
+    if (!item.url || seenUrls.has(item.url)) continue;
+    if (samePublisherDomain(item.url, originalUrl)) continue;
+
+    const domain = item.domain || hostnameOf(item.url);
+    if (!domain || domain === originalDomain || seenDomains.has(domain)) continue;
+
+    seenUrls.add(item.url);
+    seenDomains.add(domain);
+    unique.push({ ...item, domain });
+
+    if (unique.length >= 5) break;
+  }
+
+  return unique;
+}
+
+async function collectIndependentEvidence(story) {
+  const candidates = await discoverVerificationSources(story);
+  const evidence = [];
+
+  for (const candidate of candidates) {
+    if (evidence.length >= 3) break;
+
+    const text = await fetchSourceText(candidate.url);
+    if (!text || text.length < 350) continue;
+
+    evidence.push({
+      index: evidence.length + 1,
+      title: candidate.title,
+      url: candidate.url,
+      source_name: candidate.source_name,
+      domain: candidate.domain,
+      published_at: candidate.published_at,
+      discovery: candidate.discovery,
+      excerpt: text.slice(0, 5000),
+    });
+  }
+
+  return evidence;
+}
+
+async function enqueueFactCheck(env, storyId, priority) {
+  const check = await sb(
+    env,
+    `jobs?select=id&job_type=eq.fact_check_story&story_id=eq.${encodeURIComponent(
+      storyId
+    )}&status=in.(queued,processing,completed)&limit=1`
+  );
+
+  if (check.ok && (await check.json()).length) return;
+
+  const response = await sb(env, "jobs", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      job_type: "fact_check_story",
+      status: "queued",
+      priority: Math.max(1, Math.min(100, Math.round(Number(priority) || 50))),
+      story_id: storyId,
+      payload: { reason: "research package completed" },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Fact-check queue insert failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+}
+
+async function getQueuedFactCheckJobs(env, limit) {
+  const query = new URLSearchParams({
+    select:
+      "id,story_id,priority,stories(id,source_url,title,description,category,published_at,priority_score,sources(name,trust_score))",
+    job_type: "eq.fact_check_story",
+    status: "eq.queued",
+    order: "priority.desc,created_at.asc",
+    limit: String(limit),
+  });
+
+  const response = await sb(env, `jobs?${query.toString()}`);
+
+  if (!response.ok) {
+    throw new Error(
+      `Fact-check queue fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+
+  return response.json();
+}
+
+async function getResearchPackage(env, storyId) {
+  const response = await sb(
+    env,
+    `research?select=id,key_facts,notes,credibility,source_url,source_name,created_at&story_id=eq.${encodeURIComponent(
+      storyId
+    )}&source_type=eq.ai-research-package&order=created_at.desc&limit=1`
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Research package fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+
+  const rows = await response.json();
+  return rows[0] || null;
+}
+
+function finalFactCheckVerdict(aiPackage, independentSourceCount, settings) {
+  let verdict = ["approve", "hold", "reject"].includes(aiPackage.verdict)
+    ? aiPackage.verdict
+    : "hold";
+
+  const confidence = clampScore(aiPackage.confidence);
+  const conflicts = Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [];
+
+  if (
+    verdict === "approve" &&
+    (independentSourceCount < settings.factCheckMinSources ||
+      confidence < settings.factCheckApproveConfidence ||
+      conflicts.length > 0)
+  ) {
+    verdict = "hold";
+  }
+
+  return { verdict, confidence };
+}
+
+async function saveFactCheck(env, story, researchPackage, evidence, aiPackage, settings) {
+  const final = finalFactCheckVerdict(aiPackage, evidence.length, settings);
+
+  const payload = {
+    story_id: story.id,
+    research_id: researchPackage?.id ?? null,
+    verdict: final.verdict,
+    confidence: final.confidence,
+    independent_source_count: evidence.length,
+    summary: String(aiPackage.summary || "Fact-check completed").slice(0, 2000),
+    claim_checks: Array.isArray(aiPackage.claim_checks) ? aiPackage.claim_checks : [],
+    evidence_sources: evidence.map(({ excerpt, ...source }) => source),
+    conflicts: Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [],
+    missing_evidence: Array.isArray(aiPackage.missing_evidence) ? aiPackage.missing_evidence : [],
+    safe_facts: Array.isArray(aiPackage.safe_facts) ? aiPackage.safe_facts : [],
+    writing_constraints: Array.isArray(aiPackage.writing_constraints)
+      ? aiPackage.writing_constraints
+      : [],
+    checked_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const existing = await sb(
+    env,
+    `fact_checks?select=id&story_id=eq.${encodeURIComponent(story.id)}&limit=1`
+  );
+
+  const rows = existing.ok ? await existing.json() : [];
+
+  const save = rows.length
+    ? await sb(env, `fact_checks?id=eq.${rows[0].id}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify(payload),
+      })
+    : await sb(env, "fact_checks", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify(payload),
+      });
+
+  if (!save.ok) {
+    throw new Error(
+      `Fact-check save failed (${save.status}): ${(await save.text()).slice(0, 300)}`
+    );
+  }
+
+  const storyStatus =
+    final.verdict === "approve" ? "approved" : final.verdict === "reject" ? "rejected" : "review";
+
+  const storyUpdate = await sb(env, `stories?id=eq.${encodeURIComponent(story.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      verification_status: final.verdict,
+      verification_confidence: final.confidence,
+      verification_source_count: evidence.length,
+      verification_summary: payload.summary,
+      verified_at: payload.checked_at,
+      status: storyStatus,
+    }),
+  });
+
+  if (!storyUpdate.ok) {
+    throw new Error(
+      `Story verification update failed (${storyUpdate.status}): ${(await storyUpdate.text()).slice(0, 300)}`
+    );
+  }
+
+  return {
+    verdict: final.verdict,
+    confidence: final.confidence,
+    independentSourceCount: evidence.length,
+  };
+}
+
+async function factCheckStory(env, job, settings) {
+  const story = job.stories;
+
+  await updateJob(env, job.id, {
+    status: "processing",
+    attempts: 1,
+    started_at: new Date().toISOString(),
+    error_message: null,
+  });
+
+  try {
+    const researchPackage = await getResearchPackage(env, story.id);
+    if (!researchPackage) {
+      throw new Error("No completed research package found for this story");
+    }
+
+    const evidence = await collectIndependentEvidence(story);
+    const research =
+      researchPackage.key_facts && typeof researchPackage.key_facts === "object"
+        ? researchPackage.key_facts
+        : { summary: researchPackage.notes || "" };
+
+    const evidenceText = evidence.length
+      ? evidence
+          .map(
+            (source) => `SOURCE ${source.index}\nPublisher: ${source.source_name}\nURL: ${source.url}\nTitle: ${source.title}\nEvidence: ${source.excerpt}`
+          )
+          .join("\n\n---\n\n")
+      : "No usable independent source text could be retrieved.";
+
+    const prompt = `
+Fact-check this researched technology story for Aura Digital Intelligence.
+
+Your task is claim-by-claim verification, not rewriting.
+
+Rules:
+- Treat the original research package as claims that need verification.
+- Independent evidence is listed as SOURCE 1, SOURCE 2, etc.
+- Never claim verification from a source that does not actually support the claim.
+- If evidence is insufficient, mark the claim unverified and choose HOLD.
+- If credible sources materially contradict the central claim, choose REJECT or HOLD.
+- APPROVE only when the central claims are supported by multiple independent sources.
+- Do not invent Fiji/Pacific relevance or facts.
+
+Original story title:
+${normalizeSearchTitle(story.title)}
+
+Original URL:
+${story.source_url}
+
+Preliminary research package:
+${JSON.stringify(research).slice(0, 9000)}
+
+Independent evidence (${evidence.length} usable sources):
+${evidenceText.slice(0, 15000)}
+`;
+
+    const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a conservative newsroom fact checker. Verify only what the supplied evidence supports. Output the requested JSON schema exactly.",
+        },
+        { role: "user", content: prompt },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: FACT_CHECK_SCHEMA,
+      },
+      max_tokens: 1100,
+      temperature: 0.1,
+    });
+
+    const aiPackage = parseStructured(raw);
+    aiPackage.confidence = clampScore(aiPackage.confidence);
+
+    const saved = await saveFactCheck(
+      env,
+      story,
+      researchPackage,
+      evidence,
+      aiPackage,
+      settings
+    );
+
+    await updateJob(env, job.id, {
+      status: "completed",
+      result: {
+        ...saved,
+        aiVerdict: aiPackage.verdict,
+        sourceDiscovery: evidence.map((item) => ({
+          title: item.title,
+          url: item.url,
+          source_name: item.source_name,
+          domain: item.domain,
+        })),
+      },
+      finished_at: new Date().toISOString(),
+    });
+
+    return {
+      storyId: story.id,
+      title: story.title,
+      ...saved,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    try {
+      await updateJob(env, job.id, {
+        status: "failed",
+        error_message: message,
+        finished_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    throw error;
   }
 }
 
@@ -1243,6 +1832,35 @@ async function runCycle(env) {
     }
   }
 
+  const factCheckJobs =
+    await getQueuedFactCheckJobs(
+      env,
+      thresholds.maxFactChecks
+    );
+
+  const factChecked = [];
+
+  for (const job of factCheckJobs) {
+    try {
+      factChecked.push(
+        await factCheckStory(
+          env,
+          job,
+          thresholds
+        )
+      );
+    } catch (e) {
+      failures.push({
+        storyId: job.story_id,
+        stage: "fact-check",
+        error:
+          e instanceof Error
+            ? e.message
+            : String(e),
+      });
+    }
+  }
+
   return {
     ok:
       failures.length === 0,
@@ -1258,6 +1876,11 @@ async function runCycle(env) {
       researched.length,
 
     researched,
+
+    factCheckProcessed:
+      factChecked.length,
+
+    factChecked,
 
     failedCount:
       failures.length,
@@ -1289,7 +1912,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "decision-and-research-json-mode",
+          "fact-check-and-verification-json-mode",
 
         model:
           env.AI_MODEL ||
@@ -1354,7 +1977,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "decision-and-research-json-mode",
+        "fact-check-and-verification-json-mode",
 
       endpoints: [
         "GET /health",

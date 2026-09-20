@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { Activity, FileText, Radio, Rss, ShieldCheck } from "lucide-react";
+import { Activity, FileText, Radio, Rss, SearchCheck, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 
@@ -10,12 +10,13 @@ export default async function DashboardPage() {
   const user = await requireAdmin();
   const supabase = await createClient();
 
-  const [{ count: stories }, { count: sources }, { count: articles }, { count: jobs }] =
+  const [{ count: stories }, { count: sources }, { count: articles }, { count: jobs }, { count: factChecks }] =
     await Promise.all([
       supabase.from("stories").select("*", { count: "exact", head: true }),
       supabase.from("sources").select("*", { count: "exact", head: true }),
       supabase.from("articles").select("*", { count: "exact", head: true }),
       supabase.from("jobs").select("*", { count: "exact", head: true }),
+      supabase.from("fact_checks").select("*", { count: "exact", head: true }),
     ]);
 
   const cards = [
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
     { label: "Sources", value: sources ?? 0, icon: Rss },
     { label: "Articles", value: articles ?? 0, icon: FileText },
     { label: "Jobs", value: jobs ?? 0, icon: Activity },
+    { label: "Fact checks", value: factChecks ?? 0, icon: SearchCheck },
   ];
 
   return (
@@ -49,7 +51,7 @@ export default async function DashboardPage() {
               </div>
               <h2 className="mt-4 text-3xl font-black">Automatic discovery is online.</h2>
               <p className="mt-3 max-w-2xl leading-7 text-white/65">
-                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. Story scoring is online. The decision engine and autonomous research queue are now the next live stage; publishing remains protected.
+                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. Story scoring is online. The decision engine and autonomous research agent are online. Multi-source fact checking is now the live quality gate; publishing remains protected.
               </p>
             </div>
             <div className="hidden rounded-2xl bg-white/10 px-4 py-3 text-sm md:block">
@@ -59,7 +61,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {cards.map((card) => {
             const Icon = card.icon;
             return (
@@ -79,6 +81,7 @@ export default async function DashboardPage() {
               <div className="flex flex-wrap gap-2">
                 <Link href="/admin/stories" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Story inbox</Link>
                 <Link href="/admin/research" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Research queue</Link>
+                <Link href="/admin/fact-checks" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Fact checks</Link>
                 <Link href="/admin/sources" className="rounded-xl bg-[#111318] px-3 py-2 text-xs font-black text-white">Manage sources</Link>
               </div>
             </div>
@@ -89,8 +92,9 @@ export default async function DashboardPage() {
               <li>04 — Duplicate detection ✓</li>
               <li>05 — Fiji + Aura relevance engine ✓</li>
               <li>06 — Decision engine + research agent ✓</li>
-              <li>07 — Writer + fact checker</li>
-              <li>08 — SEO + publishing</li>
+              <li>07 — Multi-source fact checker ✓</li>
+              <li>08 — Article writer + SEO</li>
+              <li>09 — Quality gate + publishing</li>
             </ol>
           </div>
 

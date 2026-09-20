@@ -75,6 +75,11 @@ create table public.stories (
   decision text check (decision in ('ignore','watch','research')),
   decision_reason text,
   decided_at timestamptz,
+  verification_status text check (verification_status in ('approve','hold','reject')),
+  verification_confidence numeric(5,2),
+  verification_source_count integer not null default 0,
+  verification_summary text,
+  verified_at timestamptz,
   cluster_key text,
   created_at timestamptz not null default now()
 );
@@ -98,6 +103,28 @@ create table public.research (
 );
 
 create index research_story_id_idx on public.research(story_id);
+
+create table public.fact_checks (
+  id uuid primary key default gen_random_uuid(),
+  story_id uuid not null unique references public.stories(id) on delete cascade,
+  research_id uuid references public.research(id) on delete set null,
+  verdict text not null check (verdict in ('approve','hold','reject')),
+  confidence numeric(5,2) not null default 0 check (confidence between 0 and 100),
+  independent_source_count integer not null default 0,
+  summary text,
+  claim_checks jsonb not null default '[]'::jsonb,
+  evidence_sources jsonb not null default '[]'::jsonb,
+  conflicts jsonb not null default '[]'::jsonb,
+  missing_evidence jsonb not null default '[]'::jsonb,
+  safe_facts jsonb not null default '[]'::jsonb,
+  writing_constraints jsonb not null default '[]'::jsonb,
+  checked_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index fact_checks_verdict_idx
+  on public.fact_checks(verdict, confidence desc);
 
 create table public.authors (
   id uuid primary key default gen_random_uuid(),
@@ -228,13 +255,17 @@ values
 ('daily_ai_budget_usd', '10'::jsonb),
 ('watch_priority_threshold', '50'::jsonb),
 ('research_priority_threshold', '72'::jsonb),
-('max_research_per_run', '2'::jsonb)
+('max_research_per_run', '1'::jsonb),
+('max_fact_checks_per_run', '1'::jsonb),
+('fact_check_min_sources', '2'::jsonb),
+('fact_check_approve_confidence', '75'::jsonb)
 on conflict (key) do nothing;
 
 -- Enable RLS.
 alter table public.sources enable row level security;
 alter table public.stories enable row level security;
 alter table public.research enable row level security;
+alter table public.fact_checks enable row level security;
 alter table public.authors enable row level security;
 alter table public.topics enable row level security;
 alter table public.articles enable row level security;
@@ -258,6 +289,10 @@ using (true) with check (true);
 
 create policy "authenticated can manage research"
 on public.research for all to authenticated
+using (true) with check (true);
+
+create policy "authenticated can manage fact checks"
+on public.fact_checks for all to authenticated
 using (true) with check (true);
 
 create policy "authenticated can manage authors"

@@ -1,41 +1,35 @@
-# Aura Intelligence Cloudflare Automation Worker
+# Aura Intelligence Cloudflare Worker
 
-This Worker replaces frequent Vercel Cron usage while keeping the existing Vercel RSS Scout.
+This Worker is the free-tier automation and intelligence layer for Aura Digital Intelligence.
 
-Every 15 minutes it:
+Current pipeline:
 
-1. Calls the protected Vercel `/api/cron/discover` endpoint.
-2. Loads a small batch of `discovered` stories from Supabase.
-3. Scores them with Cloudflare Workers AI.
-4. Scores importance, Fiji/Pacific, business and Aura-service relevance.
-5. Calculates and stores a weighted priority score.
-6. Automatically decides `ignore`, `watch`, or `research`.
-7. Queues high-priority stories for research.
-8. Fetches the original source page and creates a structured preliminary AI research package.
-9. Stores research packages in `research` and logs all work in `jobs`.
+1. Trigger the existing Vercel RSS Scout.
+2. Score newly discovered stories with Workers AI.
+3. Apply deterministic `ignore / watch / research` decisions.
+4. Research high-priority stories one at a time.
+5. Queue completed research packages for multi-source fact checking.
+6. Discover independent coverage using GDELT, with Google News RSS as a fallback.
+7. Fetch up to three distinct publisher pages and compare claims with Workers AI JSON mode.
+8. Save an `APPROVE / HOLD / REJECT` verification package to Supabase.
 
-## Required Cloudflare Worker secrets
+`APPROVE` is deliberately conservative. The Worker will downgrade an AI approval to `HOLD` unless the configured minimum number of independent sources is available, confidence clears the threshold, and there are no recorded conflicts.
 
+## Required bindings / secrets
+
+- Workers AI binding: `AI`
 - `VERCEL_SCOUT_URL`
 - `CRON_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
 
-Do not commit secret values.
+Optional environment variables are already represented in `wrangler.jsonc`:
 
-## Non-secret configuration
+- `AI_MODEL`
+- `MAX_STORIES_PER_RUN`
+- `MAX_RESEARCH_PER_RUN`
+- `MAX_FACT_CHECKS_PER_RUN`
 
-`wrangler.jsonc` contains:
+Run `supabase/migrations/003_fact_check_verification.sql` before deploying this Worker version.
 
-- `MAX_STORIES_PER_RUN=6`
-- `AI_MODEL=@cf/zai-org/glm-4.7-flash`
-- Cron schedule `*/15 * * * *`
-
-The small batch is intentional to control free Workers AI usage.
-
-
-## Database migration
-
-Before deploying this Worker version, run `supabase/migrations/002_decision_research.sql` in the Supabase SQL Editor.
-
-Research is intentionally preliminary. It does not claim multi-source verification; the fact-checking stage comes next.
+Public automatic publishing remains disabled. Only stories that pass the verification gate should later be eligible for the article writer.

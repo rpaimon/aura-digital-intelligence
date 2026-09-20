@@ -11,5 +11,5 @@ create index if not exists stories_priority_idx on public.stories(priority_score
 insert into public.settings (key, value) values
   ('watch_priority_threshold', '50'::jsonb),
   ('research_priority_threshold', '72'::jsonb),
-  ('max_research_per_run', '2'::jsonb)
+  ('max_research_per_run', '1'::jsonb)
 on conflict (key) do nothing;
