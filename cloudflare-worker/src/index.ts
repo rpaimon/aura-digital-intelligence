@@ -61,7 +61,7 @@ async function runDiscovery(env) {
 async function getSettings(env) {
   const r = await sb(
     env,
-    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence,max_articles_per_run,article_writer_enabled,article_min_fact_confidence,fact_check_hold_retry_enabled,fact_check_hold_retry_max,fact_check_hold_retry_minutes,final_quality_gate_enabled,final_quality_gate_batch_size,minimum_quality_score,minimum_source_count,publishing_mode,max_publish_per_run)"
+    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence,max_articles_per_run,article_writer_enabled,article_min_fact_confidence,fact_check_hold_retry_enabled,fact_check_hold_retry_max,fact_check_hold_retry_minutes,final_quality_gate_enabled,final_quality_gate_batch_size,minimum_quality_score,minimum_source_count,publishing_mode,max_publish_per_run,originality_guard_enabled,originality_shingle_size,originality_max_overlap_ratio,originality_max_phrase_words,originality_max_rewrites)"
   );
 
   if (!r.ok) {
@@ -84,6 +84,11 @@ async function getSettings(env) {
       minimumSourceCount: 2,
       publishingMode: "manual",
       maxPublishPerRun: 1,
+      originalityGuardEnabled: true,
+      originalityShingleSize: 8,
+      originalityMaxOverlapRatio: 0.08,
+      originalityMaxPhraseWords: 18,
+      originalityMaxRewrites: 2,
     };
   }
 
@@ -162,6 +167,11 @@ async function getSettings(env) {
     minimumSourceCount: Math.max(2, Math.min(5, Number(map.minimum_source_count ?? 2) || 2)),
     publishingMode: String(map.publishing_mode ?? "manual").replace(/^"|"$/g, "") === "automatic" ? "automatic" : "manual",
     maxPublishPerRun: Math.max(1, Math.min(4, Number(map.max_publish_per_run ?? 1) || 1)),
+    originalityGuardEnabled: map.originality_guard_enabled !== false,
+    originalityShingleSize: Math.max(6, Math.min(12, Number(map.originality_shingle_size ?? 8) || 8)),
+    originalityMaxOverlapRatio: Math.max(0.02, Math.min(0.25, Number(map.originality_max_overlap_ratio ?? 0.08) || 0.08)),
+    originalityMaxPhraseWords: Math.max(14, Math.min(40, Number(map.originality_max_phrase_words ?? 18) || 18)),
+    originalityMaxRewrites: Math.max(0, Math.min(3, Number(map.originality_max_rewrites ?? 2) || 2)),
   };
 }
 
@@ -1048,6 +1058,199 @@ function asStringArray(value) {
     : [];
 }
 
+function objOrEmpty(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function normalizeSimilarityText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/[`*_>#~|{}\[\]()]/g, " ")
+    .replace(/[^a-zA-Z0-9'\s-]/g, " ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hashPhrase(value) {
+  // FNV-1a 32-bit. We store only hashes, never copied publisher prose.
+  let hash = 0x811c9dc5;
+  const text = String(value || "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function shingleSequence(value, size = 8, maxShingles = 1800) {
+  const normalized = normalizeSimilarityText(value);
+  const words = normalized ? normalized.split(" ").filter(Boolean) : [];
+  const hashes = [];
+  if (words.length < size) return { words, hashes };
+  for (let i = 0; i <= words.length - size && hashes.length < maxShingles; i += 1) {
+    hashes.push(hashPhrase(words.slice(i, i + size).join(" ")));
+  }
+  return { words, hashes };
+}
+
+function buildSourceFingerprints(evidence, shingleSize = 8) {
+  return (Array.isArray(evidence) ? evidence : [])
+    .filter((source) => source && typeof source === "object" && source.excerpt)
+    .slice(0, 5)
+    .map((source) => {
+      const sequence = shingleSequence(String(source.excerpt || "").slice(0, 16000), shingleSize, 1600);
+      return {
+        domain: String(source.domain || source.source_name || "source").slice(0, 180),
+        url: String(source.url || "").slice(0, 1500),
+        shingle_size: shingleSize,
+        hashes: [...new Set(sequence.hashes)].slice(0, 1600),
+      };
+    })
+    .filter((row) => row.hashes.length > 0);
+}
+
+function evaluateOriginality(content, sourceFingerprints, settings) {
+  const sourceRows = Array.isArray(sourceFingerprints) ? sourceFingerprints : [];
+  const shingleSize = settings.originalityShingleSize || 8;
+  const articleBody = String(content || "").replace(/\n##\s+Sources[\s\S]*$/i, "").trim();
+  const article = shingleSequence(articleBody, shingleSize, 2400);
+  const sourceSets = sourceRows
+    .filter((row) => Array.isArray(row?.hashes) && row.hashes.length)
+    .map((row) => ({
+      domain: String(row.domain || "source"),
+      url: String(row.url || ""),
+      hashes: new Set(row.hashes.map((x) => String(x))),
+    }));
+
+  if (!settings.originalityGuardEnabled) {
+    return {
+      passed: true,
+      evaluable: false,
+      score: 100,
+      overlapRatio: 0,
+      matchedShingles: 0,
+      totalShingles: article.hashes.length,
+      longestMatchedWords: 0,
+      perSource: [],
+      reason: "Originality guard disabled by setting",
+    };
+  }
+
+  if (!article.hashes.length || !sourceSets.length) {
+    return {
+      passed: false,
+      evaluable: false,
+      score: 0,
+      overlapRatio: 0,
+      matchedShingles: 0,
+      totalShingles: article.hashes.length,
+      longestMatchedWords: 0,
+      perSource: [],
+      reason: !sourceSets.length
+        ? "No source fingerprints available; fail-closed"
+        : "Article is too short for similarity evaluation",
+    };
+  }
+
+  const matchedFlags = article.hashes.map((hash) => sourceSets.some((row) => row.hashes.has(hash)));
+  const matchedShingles = matchedFlags.filter(Boolean).length;
+  const overlapRatio = matchedShingles / article.hashes.length;
+  let longestRun = 0;
+  let currentRun = 0;
+  for (const matched of matchedFlags) {
+    if (matched) {
+      currentRun += 1;
+      longestRun = Math.max(longestRun, currentRun);
+    } else {
+      currentRun = 0;
+    }
+  }
+  const longestMatchedWords = longestRun > 0 ? longestRun + shingleSize - 1 : 0;
+
+  const perSource = sourceSets.map((row) => {
+    const hits = article.hashes.filter((hash) => row.hashes.has(hash)).length;
+    return {
+      domain: row.domain,
+      matched_shingles: hits,
+      overlap_ratio: Math.round((hits / article.hashes.length) * 10000) / 10000,
+    };
+  });
+
+  const ratioFailed = overlapRatio > settings.originalityMaxOverlapRatio && matchedShingles >= 8;
+  const phraseFailed = longestMatchedWords >= settings.originalityMaxPhraseWords;
+  const passed = !ratioFailed && !phraseFailed;
+  const penalty = Math.min(100, overlapRatio * 550 + Math.max(0, longestMatchedWords - shingleSize) * 2.5);
+  const score = Math.max(0, Math.round(100 - penalty));
+
+  return {
+    passed,
+    evaluable: true,
+    score,
+    overlapRatio: Math.round(overlapRatio * 10000) / 10000,
+    matchedShingles,
+    totalShingles: article.hashes.length,
+    longestMatchedWords,
+    perSource,
+    reason: passed
+      ? "No excessive exact phrase overlap detected"
+      : phraseFailed
+        ? `Exact phrase overlap reached about ${longestMatchedWords} consecutive words`
+        : `Exact ${shingleSize}-word phrase overlap ratio ${(overlapRatio * 100).toFixed(1)}% exceeded threshold`,
+  };
+}
+
+async function rewriteArticleForOriginality(env, generated, story, safeFacts, constraints, attempt) {
+  const prompt = `
+Rewrite the draft below into genuinely original editorial prose for Aura Digital Intelligence.
+
+NON-NEGOTIABLE RULES:
+- Preserve ONLY the verified SAFE FACTS listed below.
+- Change sentence structure, paragraph structure, transitions and wording substantially.
+- Do not imitate, paraphrase closely, quote, or reproduce publisher wording.
+- Do not add new facts, dates, numbers, names, technical details, causes or impacts.
+- Keep factual claims conservative; analysis must be clearly framed as analysis.
+- Do not add a Sources section.
+- This is originality rewrite attempt ${attempt}.
+
+ORIGINAL STORY TITLE:
+${story.title}
+
+SAFE FACTS:
+${safeFacts.map((fact, index) => `${index + 1}. ${fact}`).join("\n")}
+
+WRITING CONSTRAINTS:
+${constraints.length ? constraints.map((item) => `- ${item}`).join("\n") : "- None beyond safe-fact rules."}
+
+DRAFT TO REWRITE:
+TITLE: ${generated.title || ""}
+SUBTITLE: ${generated.subtitle || ""}
+EXCERPT: ${generated.excerpt || ""}
+CONTENT:\n${String(generated.content || "").slice(0, 12000)}
+
+Return the complete rewritten article package.
+`;
+
+  const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an originality editor. Produce independent wording from verified facts only. Never copy or closely paraphrase source prose.",
+      },
+      { role: "user", content: prompt },
+    ],
+    response_format: { type: "json_schema", json_schema: ARTICLE_SCHEMA },
+    max_tokens: 2200,
+    temperature: 0.45,
+  });
+
+  return parseStructured(raw);
+}
+
 async function enqueueArticleJob(env, storyId, priority = 70) {
   const existing = await sb(
     env,
@@ -1104,7 +1307,7 @@ async function getQueuedArticleJobs(env, limit) {
 async function getApprovedFactCheck(env, storyId) {
   const response = await sb(
     env,
-    `fact_checks?select=id,verdict,confidence,independent_source_count,summary,claim_checks,evidence_sources,conflicts,missing_evidence,safe_facts,writing_constraints&story_id=eq.${encodeURIComponent(storyId)}&limit=1`
+    `fact_checks?select=id,verdict,confidence,independent_source_count,summary,claim_checks,evidence_sources,source_phrase_fingerprints,conflicts,missing_evidence,safe_facts,writing_constraints&story_id=eq.${encodeURIComponent(storyId)}&limit=1`
   );
   if (!response.ok) {
     throw new Error(
@@ -1240,7 +1443,31 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
       temperature: 0.2,
     });
 
-    const generated = parseStructured(raw);
+    let generated = parseStructured(raw);
+    const sourceFingerprints = Array.isArray(factCheck.source_phrase_fingerprints)
+      ? factCheck.source_phrase_fingerprints
+      : [];
+    let originality = evaluateOriginality(generated.content, sourceFingerprints, settings);
+    let originalityRewriteCount = 0;
+
+    while (
+      settings.originalityGuardEnabled &&
+      !originality.passed &&
+      originality.evaluable &&
+      originalityRewriteCount < settings.originalityMaxRewrites
+    ) {
+      originalityRewriteCount += 1;
+      generated = await rewriteArticleForOriginality(
+        env,
+        generated,
+        story,
+        safeFacts,
+        constraints,
+        originalityRewriteCount
+      );
+      originality = evaluateOriginality(generated.content, sourceFingerprints, settings);
+    }
+
     const title = String(generated.title || story.title).replace(/\s+/g, " ").trim().slice(0, 180);
     const slugBase = slugify(title);
     const slug = `${slugBase}-${String(story.id).slice(0, 8)}`;
@@ -1258,7 +1485,7 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
 
     const quality = articleQualityScore(normalizedArticle, factCheck);
     const authorId = await getDefaultAuthorId(env);
-    const status = quality.score >= 85 ? "review" : "draft";
+    const status = quality.score >= 85 && originality.passed ? "review" : "draft";
     const now = new Date().toISOString();
     const articlePayload = {
       story_id: story.id,
@@ -1273,12 +1500,31 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
       seo_description: normalizedArticle.seo_description || normalizedArticle.excerpt || null,
       status,
       quality_score: quality.score,
+      originality_score: originality.score,
+      originality_passed: originality.passed,
+      originality_checked_at: new Date().toISOString(),
+      originality_rewrite_count: originalityRewriteCount,
+      originality_notes: {
+        engine: "hashed-source-shingles-v1",
+        evaluable: originality.evaluable,
+        overlap_ratio: originality.overlapRatio,
+        matched_shingles: originality.matchedShingles,
+        total_shingles: originality.totalShingles,
+        longest_matched_words: originality.longestMatchedWords,
+        source_results: originality.perSource,
+        reason: originality.reason,
+        max_overlap_ratio: settings.originalityMaxOverlapRatio,
+        max_phrase_words: settings.originalityMaxPhraseWords,
+      },
       quality_notes: {
         fact_check_confidence: Number(factCheck.confidence || 0),
         independent_source_count: Number(factCheck.independent_source_count || 0),
         safe_fact_count: safeFacts.length,
         word_count: quality.wordCount,
         writer: "verified-safe-facts-v1",
+        originality_passed: originality.passed,
+        originality_score: originality.score,
+        originality_rewrite_count: originalityRewriteCount,
       },
       seo_keywords: normalizedArticle.keywords
         .split(",")
@@ -1350,6 +1596,9 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
         wordCount: quality.wordCount,
         safeFactCount: safeFacts.length,
         sourceCount: Number(factCheck.independent_source_count || 0),
+        originalityPassed: originality.passed,
+        originalityScore: originality.score,
+        originalityRewriteCount,
       },
       finished_at: now,
     });
@@ -1364,6 +1613,10 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
       wordCount: quality.wordCount,
       safeFactCount: safeFacts.length,
       independentSourceCount: Number(factCheck.independent_source_count || 0),
+      originalityPassed: originality.passed,
+      originalityScore: originality.score,
+      originalityRewriteCount,
+      originalityReason: originality.reason,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1381,7 +1634,7 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
 
 async function getFinalQualityCandidates(env, limit) {
   const query = new URLSearchParams({
-    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,final_quality_checked_at",
+    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,originality_score,originality_passed,originality_notes,originality_rewrite_count,final_quality_checked_at",
     status: "in.(draft,review)",
     final_quality_checked_at: "is.null",
     order: "created_at.asc",
@@ -1431,6 +1684,8 @@ function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
   const seoDescription = String(article?.seo_description || "").trim();
   const hasSourceSection = /##\s+Sources/i.test(content);
   const suspiciousPlaceholder = /\b(TODO|TBD|undefined|null)\b/i.test(content);
+  const originalityPassed = article?.originality_passed === true;
+  const originalityScore = Number(article?.originality_score || 0);
 
   if (factCheck?.verdict !== "approve") failures.push("Fact-check verdict is not APPROVE");
   if (confidence < settings.articleMinFactConfidence) failures.push(`Fact-check confidence ${confidence} is below ${settings.articleMinFactConfidence}`);
@@ -1445,6 +1700,7 @@ function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
   if (seoDescription.length < 90 || seoDescription.length > 180) failures.push("SEO description length is outside the safe range");
   if (!hasSourceSection) failures.push("Verified Sources section is missing");
   if (suspiciousPlaceholder) failures.push("Placeholder text was detected");
+  if (settings.originalityGuardEnabled && !originalityPassed) failures.push("Copyright/originality guard has not passed");
 
   let score = 0;
   if (factCheck?.verdict === "approve") score += 20;
@@ -1470,6 +1726,9 @@ function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
       safe_fact_count: safeFacts.length,
       word_count: words,
       minimum_quality_score: settings.minimumQualityScore,
+      originality_passed: originalityPassed,
+      originality_score: originalityScore,
+      originality_engine: objOrEmpty(article?.originality_notes).engine || null,
       checked_at: new Date().toISOString(),
     },
   };
@@ -1530,7 +1789,7 @@ async function getPublishableArticles(env, settings) {
   const now = new Date().toISOString();
   const dueScheduled = await sb(
     env,
-    `articles?select=id,story_id,slug,title,scheduled_for,first_published_at&status=eq.approved&final_quality_passed=eq.true&scheduled_for=not.is.null&scheduled_for=lte.${encodeURIComponent(now)}&order=scheduled_for.asc&limit=${settings.maxPublishPerRun}`
+    `articles?select=id,story_id,slug,title,scheduled_for,first_published_at&status=eq.approved&final_quality_passed=eq.true&originality_passed=eq.true&scheduled_for=not.is.null&scheduled_for=lte.${encodeURIComponent(now)}&order=scheduled_for.asc&limit=${settings.maxPublishPerRun}`
   );
   const scheduled = dueScheduled.ok ? await dueScheduled.json() : [];
   if (scheduled.length >= settings.maxPublishPerRun || settings.publishingMode !== "automatic") return scheduled.slice(0, settings.maxPublishPerRun);
@@ -1538,7 +1797,7 @@ async function getPublishableArticles(env, settings) {
   const remaining = settings.maxPublishPerRun - scheduled.length;
   const automatic = await sb(
     env,
-    `articles?select=id,story_id,slug,title,scheduled_for,first_published_at&status=eq.approved&final_quality_passed=eq.true&scheduled_for=is.null&order=final_quality_checked_at.asc&limit=${remaining}`
+    `articles?select=id,story_id,slug,title,scheduled_for,first_published_at&status=eq.approved&final_quality_passed=eq.true&originality_passed=eq.true&scheduled_for=is.null&order=final_quality_checked_at.asc&limit=${remaining}`
   );
   const autoRows = automatic.ok ? await automatic.json() : [];
   return [...scheduled, ...autoRows].slice(0, settings.maxPublishPerRun);
@@ -3043,6 +3302,7 @@ async function saveFactCheck(env, story, researchPackage, evidence, aiPackage, s
     summary: String(aiPackage.summary || "Fact-check completed").slice(0, 2000),
     claim_checks: Array.isArray(aiPackage.claim_checks) ? aiPackage.claim_checks : [],
     evidence_sources: evidence.map(({ excerpt, ...source }) => source),
+    source_phrase_fingerprints: buildSourceFingerprints(evidence, settings.originalityShingleSize),
     conflicts: Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [],
     missing_evidence: Array.isArray(aiPackage.missing_evidence) ? aiPackage.missing_evidence : [],
     safe_facts: Array.isArray(aiPackage.safe_facts) ? aiPackage.safe_facts : [],
@@ -3568,7 +3828,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "publishing-engine-v1-quality-gate-public-news",
+          "originality-guard-v1-publishing-safe",
 
         model:
           env.AI_MODEL ||

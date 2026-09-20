@@ -30,11 +30,12 @@ export async function publishArticle(formData: FormData) {
   const supabase = createAdminClient();
   const { data: article, error: readError } = await supabase
     .from("articles")
-    .select("id,story_id,slug,title,status,final_quality_passed,final_quality_score,published_at,first_published_at")
+    .select("id,story_id,slug,title,status,final_quality_passed,final_quality_score,originality_passed,originality_score,published_at,first_published_at")
     .eq("id", articleId)
     .single();
   if (readError) throw new Error(readError.message);
   if (!article.final_quality_passed) throw new Error("This article has not passed the final quality gate.");
+  if (!article.originality_passed) throw new Error("This article has not passed the copyright/originality guard.");
 
   const now = new Date().toISOString();
   const { error } = await supabase
@@ -70,11 +71,12 @@ export async function scheduleArticle(formData: FormData) {
   const supabase = createAdminClient();
   const { data: article, error: readError } = await supabase
     .from("articles")
-    .select("id,final_quality_passed")
+    .select("id,final_quality_passed,originality_passed")
     .eq("id", articleId)
     .single();
   if (readError) throw new Error(readError.message);
   if (!article.final_quality_passed) throw new Error("This article has not passed the final quality gate.");
+  if (!article.originality_passed) throw new Error("This article has not passed the copyright/originality guard.");
 
   const { error } = await supabase
     .from("articles")

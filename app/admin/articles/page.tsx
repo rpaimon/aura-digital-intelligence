@@ -24,6 +24,10 @@ type ArticleRow = {
   final_quality_score: number | null;
   final_quality_passed: boolean | null;
   final_quality_notes: unknown;
+  originality_score: number | null;
+  originality_passed: boolean | null;
+  originality_notes: unknown;
+  originality_rewrite_count: number | null;
   scheduled_for: string | null;
   published_at: string | null;
   seo_keywords: unknown;
@@ -56,7 +60,7 @@ export default async function ArticlesPage() {
   const [{ data, error }, { data: publishingSetting }] = await Promise.all([
     supabase
       .from("articles")
-      .select("id,story_id,slug,title,subtitle,excerpt,content,category,seo_title,seo_description,status,quality_score,quality_notes,final_quality_score,final_quality_passed,final_quality_notes,scheduled_for,published_at,seo_keywords,generated_at,created_at,stories(source_url,verification_status,verification_confidence)")
+      .select("id,story_id,slug,title,subtitle,excerpt,content,category,seo_title,seo_description,status,quality_score,quality_notes,final_quality_score,final_quality_passed,final_quality_notes,originality_score,originality_passed,originality_notes,originality_rewrite_count,scheduled_for,published_at,seo_keywords,generated_at,created_at,stories(source_url,verification_status,verification_confidence)")
       .order("created_at", { ascending: false })
       .limit(60),
     supabase.from("settings").select("value").eq("key", "publishing_mode").maybeSingle(),
@@ -94,7 +98,7 @@ export default async function ArticlesPage() {
             <div>
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-white/50"><Globe2 size={14} /> Publishing mode</div>
               <h2 className="mt-2 text-2xl font-black">{publishingMode === "automatic" ? "Automatic publishing is ON" : "Manual publishing is ON"}</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">Only articles that pass the deterministic final quality gate are eligible. Scheduled articles publish at their selected time in either mode.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">Only articles that pass fact checking, the copyright/originality guard, and the deterministic final quality gate are eligible. Scheduled articles publish at their selected time in either mode.</p>
             </div>
             <div className="flex gap-2">
               <form action={setPublishingMode}><input type="hidden" name="mode" value="manual" /><button className={`rounded-xl px-4 py-2 text-sm font-black ${publishingMode === "manual" ? "bg-white text-black" : "bg-white/10 text-white"}`}>Manual</button></form>
@@ -118,12 +122,15 @@ export default async function ArticlesPage() {
             {rows.map((row) => {
               const notes = obj(row.quality_notes);
               const finalNotes = obj(row.final_quality_notes);
+              const originalityNotes = obj(row.originality_notes);
               const seoTags = tags(row.seo_keywords);
               return (
                 <article key={row.id} className="py-7">
                   <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-gray-500">
                     <StatusBadge status={row.status} />
                     <span>Writer {row.quality_score == null ? "—" : Math.round(Number(row.quality_score))}</span>
+                    <span>Originality {row.originality_score == null ? "Pending" : Math.round(Number(row.originality_score))}</span>
+                    <span className={row.originality_passed ? "text-emerald-700" : row.originality_passed === false ? "text-red-700" : ""}>{row.originality_passed ? "Originality passed" : row.originality_passed === false ? "Originality blocked" : "Awaiting originality"}</span>
                     <span>Final {row.final_quality_score == null ? "Pending" : Math.round(Number(row.final_quality_score))}</span>
                     <span className={row.final_quality_passed ? "text-emerald-700" : ""}>{row.final_quality_passed ? "Gate passed" : row.final_quality_passed === false ? "Needs review" : "Awaiting gate"}</span>
                     {row.published_at && <span>Published {new Date(row.published_at).toLocaleString()}</span>}
@@ -134,13 +141,23 @@ export default async function ArticlesPage() {
                   {row.subtitle && <p className="mt-1 text-sm font-bold text-gray-600">{row.subtitle}</p>}
                   {row.excerpt && <p className="mt-3 max-w-4xl text-sm leading-6 text-gray-600">{row.excerpt}</p>}
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
                     <Metric label="Fact-check" value={row.stories?.verification_confidence == null ? "—" : String(Math.round(Number(row.stories.verification_confidence)))} />
                     <Metric label="Safe facts" value={String(notes.safe_fact_count ?? "—")} />
                     <Metric label="Sources" value={String(notes.independent_source_count ?? "—")} />
                     <Metric label="Words" value={String(notes.word_count ?? "—")} />
+                    <Metric label="Originality" value={row.originality_score == null ? "—" : `${Math.round(Number(row.originality_score))}/100`} />
                     <Metric label="Category" value={row.category ?? "—"} />
                   </div>
+
+
+                  {row.originality_passed === false && (
+                    <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-900">
+                      <p className="font-black">Copyright / originality guard</p>
+                      <p className="mt-1">{String(originalityNotes.reason || "Article similarity requires review before publication.")}</p>
+                      <p className="mt-1 text-xs">Overlap {String(originalityNotes.overlap_ratio ?? "—")} · longest matching phrase {String(originalityNotes.longest_matched_words ?? "—")} words · rewrites {String(row.originality_rewrite_count ?? 0)}</p>
+                    </div>
+                  )}
 
                   {Array.isArray(finalNotes.failures) && finalNotes.failures.length > 0 && (
                     <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
@@ -160,10 +177,10 @@ export default async function ArticlesPage() {
                   {seoTags.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{seoTags.map((tag) => <span key={tag} className="rounded-full bg-[#f0ede8] px-2.5 py-1 text-[10px] font-black uppercase text-gray-600">{tag}</span>)}</div>}
 
                   <div className="mt-5 flex flex-wrap items-end gap-2">
-                    {row.final_quality_passed && row.status !== "published" && (
+                    {row.final_quality_passed && row.originality_passed && row.status !== "published" && (
                       <form action={publishArticle}><input type="hidden" name="articleId" value={row.id} /><button className="rounded-xl bg-[#111318] px-4 py-2.5 text-xs font-black text-white">Publish now</button></form>
                     )}
-                    {row.final_quality_passed && row.status !== "published" && <ScheduleForm articleId={row.id} />}
+                    {row.final_quality_passed && row.originality_passed && row.status !== "published" && <ScheduleForm articleId={row.id} />}
                     {row.status === "published" && (
                       <><Link href={`/news/${row.slug}`} target="_blank" className="rounded-xl bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800">View live</Link><form action={unpublishArticle}><input type="hidden" name="articleId" value={row.id} /><button className="rounded-xl border border-red-200 px-4 py-2.5 text-xs font-black text-red-700">Unpublish</button></form></>
                     )}
