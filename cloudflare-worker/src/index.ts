@@ -61,7 +61,7 @@ async function runDiscovery(env) {
 async function getSettings(env) {
   const r = await sb(
     env,
-    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence,max_articles_per_run,max_articles_per_day,article_writer_enabled,article_min_fact_confidence,fact_check_hold_retry_enabled,fact_check_hold_retry_max,fact_check_hold_retry_minutes)"
+    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence,max_articles_per_run,article_writer_enabled,article_min_fact_confidence,fact_check_hold_retry_enabled,fact_check_hold_retry_max,fact_check_hold_retry_minutes,final_quality_gate_enabled,final_quality_gate_batch_size,minimum_quality_score,minimum_source_count,publishing_mode,max_publish_per_run)"
   );
 
   if (!r.ok) {
@@ -73,12 +73,17 @@ async function getSettings(env) {
       factCheckMinSources: 2,
       factCheckApproveConfidence: 75,
       maxArticles: DEFAULT_ARTICLE_BATCH,
-      maxArticlesPerDay: 8,
       articleWriterEnabled: true,
       articleMinFactConfidence: 75,
       holdRetryEnabled: true,
       holdRetryMax: 4,
       holdRetryMinutes: 360,
+      finalQualityGateEnabled: true,
+      finalQualityBatchSize: 4,
+      minimumQualityScore: 90,
+      minimumSourceCount: 2,
+      publishingMode: "manual",
+      maxPublishPerRun: 1,
     };
   }
 
@@ -143,10 +148,6 @@ async function getSettings(env) {
         Number(env.MAX_ARTICLES_PER_RUN ?? map.max_articles_per_run ?? DEFAULT_ARTICLE_BATCH) || DEFAULT_ARTICLE_BATCH
       )
     ),
-    maxArticlesPerDay: Math.max(
-      1,
-      Math.min(20, Number(map.max_articles_per_day ?? 8) || 8)
-    ),
     articleWriterEnabled: map.article_writer_enabled !== false,
     articleMinFactConfidence: Math.max(
       60,
@@ -155,6 +156,12 @@ async function getSettings(env) {
     holdRetryEnabled: map.fact_check_hold_retry_enabled !== false,
     holdRetryMax: Math.max(0, Math.min(6, Number(map.fact_check_hold_retry_max ?? 4) || 4)),
     holdRetryMinutes: Math.max(60, Math.min(2880, Number(map.fact_check_hold_retry_minutes ?? 360) || 360)),
+    finalQualityGateEnabled: map.final_quality_gate_enabled !== false,
+    finalQualityBatchSize: Math.max(1, Math.min(8, Number(map.final_quality_gate_batch_size ?? 4) || 4)),
+    minimumQualityScore: Math.max(70, Math.min(100, Number(map.minimum_quality_score ?? 90) || 90)),
+    minimumSourceCount: Math.max(2, Math.min(5, Number(map.minimum_source_count ?? 2) || 2)),
+    publishingMode: String(map.publishing_mode ?? "manual").replace(/^"|"$/g, "") === "automatic" ? "automatic" : "manual",
+    maxPublishPerRun: Math.max(1, Math.min(4, Number(map.max_publish_per_run ?? 1) || 1)),
   };
 }
 
@@ -1075,22 +1082,10 @@ async function enqueueArticleJob(env, storyId, priority = 70) {
   return true;
 }
 
-async function countArticlesGeneratedToday(env) {
-  const start = new Date();
-  start.setUTCHours(0, 0, 0, 0);
-  const response = await sb(
-    env,
-    `articles?select=id&generated_at=gte.${encodeURIComponent(start.toISOString())}&limit=100`
-  );
-  if (!response.ok) return 0;
-  const rows = await response.json();
-  return Array.isArray(rows) ? rows.length : 0;
-}
-
 async function getQueuedArticleJobs(env, limit) {
   const query = new URLSearchParams({
     select:
-      "id,story_id,priority,attempts,max_attempts,stories(id,source_url,title,description,category,published_at,priority_score,verification_status,verification_confidence)",
+      "id,story_id,priority,attempts,stories(id,source_url,title,description,category,published_at,priority_score,verification_status,verification_confidence)",
     job_type: "eq.write_article",
     status: "eq.queued",
     order: "priority.desc,created_at.asc",
@@ -1170,11 +1165,9 @@ function appendDeterministicSources(content, evidenceSources) {
 
 async function writeArticle(env, job, settings) {
   const story = job.stories;
-  const currentAttempt = Number(job.attempts || 0) + 1;
-  const maxAttempts = Math.max(1, Number(job.max_attempts || 3));
   await updateJob(env, job.id, {
     status: "processing",
-    attempts: currentAttempt,
+    attempts: Number(job.attempts || 0) + 1,
     started_at: new Date().toISOString(),
     error_message: null,
   });
@@ -1298,24 +1291,11 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
       updated_at: now,
     };
 
-    const existingArticleResponse = await sb(
-      env,
-      `articles?select=id&story_id=eq.${encodeURIComponent(story.id)}&limit=1`
-    );
-    const existingArticleRows = existingArticleResponse.ok
-      ? await existingArticleResponse.json()
-      : [];
-    const save = existingArticleRows.length
-      ? await sb(env, `articles?id=eq.${encodeURIComponent(existingArticleRows[0].id)}`, {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify(articlePayload),
-        })
-      : await sb(env, "articles", {
-          method: "POST",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify(articlePayload),
-        });
+    const save = await sb(env, "articles?on_conflict=story_id", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(articlePayload),
+    });
     if (!save.ok) {
       throw new Error(
         `Article save failed (${save.status}): ${(await save.text()).slice(0, 400)}`
@@ -1389,15 +1369,228 @@ Return a useful headline, subtitle, short excerpt, Markdown article body, catego
     const message = error instanceof Error ? error.message : String(error);
     try {
       await updateJob(env, job.id, {
-        status: currentAttempt < maxAttempts ? "queued" : "failed",
-        attempts: currentAttempt,
+        status: "failed",
         error_message: message,
-        started_at: null,
-        finished_at: currentAttempt < maxAttempts ? null : new Date().toISOString(),
+        finished_at: new Date().toISOString(),
       });
     } catch {}
     throw error;
   }
+}
+
+
+async function getFinalQualityCandidates(env, limit) {
+  const query = new URLSearchParams({
+    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,final_quality_checked_at",
+    status: "in.(draft,review)",
+    final_quality_checked_at: "is.null",
+    order: "created_at.asc",
+    limit: String(limit),
+  });
+  const response = await sb(env, `articles?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Final quality queue fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+  }
+  return response.json();
+}
+
+async function getFactCheckForQualityGate(env, article) {
+  const filter = article.fact_check_id
+    ? `id=eq.${encodeURIComponent(article.fact_check_id)}`
+    : `story_id=eq.${encodeURIComponent(article.story_id)}`;
+  const response = await sb(
+    env,
+    `fact_checks?select=id,verdict,confidence,independent_source_count,safe_facts,conflicts,missing_evidence&${filter}&limit=1`
+  );
+  if (!response.ok) {
+    throw new Error(`Final quality fact-check fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+  }
+  const rows = await response.json();
+  return rows[0] || null;
+}
+
+async function getArticleSourceCount(env, articleId) {
+  const response = await sb(
+    env,
+    `article_sources?select=id&article_id=eq.${encodeURIComponent(articleId)}`
+  );
+  if (!response.ok) return 0;
+  return (await response.json()).length;
+}
+
+function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
+  const failures = [];
+  const safeFacts = asStringArray(factCheck?.safe_facts);
+  const conflicts = asStringArray(factCheck?.conflicts);
+  const confidence = Number(factCheck?.confidence || 0);
+  const writerScore = Number(article?.quality_score || 0);
+  const content = String(article?.content || "").trim();
+  const words = content.split(/\s+/).filter(Boolean).length;
+  const title = String(article?.title || "").trim();
+  const seoTitle = String(article?.seo_title || "").trim();
+  const seoDescription = String(article?.seo_description || "").trim();
+  const hasSourceSection = /##\s+Sources/i.test(content);
+  const suspiciousPlaceholder = /\b(TODO|TBD|undefined|null)\b/i.test(content);
+
+  if (factCheck?.verdict !== "approve") failures.push("Fact-check verdict is not APPROVE");
+  if (confidence < settings.articleMinFactConfidence) failures.push(`Fact-check confidence ${confidence} is below ${settings.articleMinFactConfidence}`);
+  if (sourceCount < settings.minimumSourceCount) failures.push(`Only ${sourceCount} article sources; minimum is ${settings.minimumSourceCount}`);
+  if (safeFacts.length < 1) failures.push("No verified safe facts are available");
+  if (conflicts.length > 0) failures.push("Unresolved fact-check conflicts remain");
+  if (writerScore < 85) failures.push(`Writer quality score ${writerScore} is below 85`);
+  if (words < 250) failures.push(`Article is too short (${words} words)`);
+  if (words > 1400) failures.push(`Article is too long (${words} words)`);
+  if (title.length < 20 || title.length > 100) failures.push("Headline length is outside the safe range");
+  if (!seoTitle || seoTitle.length > 70) failures.push("SEO title is missing or too long");
+  if (seoDescription.length < 90 || seoDescription.length > 180) failures.push("SEO description length is outside the safe range");
+  if (!hasSourceSection) failures.push("Verified Sources section is missing");
+  if (suspiciousPlaceholder) failures.push("Placeholder text was detected");
+
+  let score = 0;
+  if (factCheck?.verdict === "approve") score += 20;
+  score += Math.min(20, Math.max(0, confidence * 0.2));
+  if (sourceCount >= settings.minimumSourceCount) score += 15;
+  score += Math.min(15, Math.max(0, writerScore * 0.15));
+  if (safeFacts.length >= 1) score += 10;
+  if (words >= 250 && words <= 1400) score += 10;
+  if (seoTitle && seoTitle.length <= 70 && seoDescription.length >= 90 && seoDescription.length <= 180) score += 5;
+  if (hasSourceSection) score += 5;
+  score = Math.min(100, Math.round(score * 100) / 100);
+
+  const passed = failures.length === 0 && score >= settings.minimumQualityScore;
+  return {
+    passed,
+    score,
+    notes: {
+      engine: "deterministic-publication-gate-v1",
+      failures,
+      fact_check_confidence: confidence,
+      writer_quality_score: writerScore,
+      source_count: sourceCount,
+      safe_fact_count: safeFacts.length,
+      word_count: words,
+      minimum_quality_score: settings.minimumQualityScore,
+      checked_at: new Date().toISOString(),
+    },
+  };
+}
+
+async function runFinalQualityGate(env, settings) {
+  if (!settings.finalQualityGateEnabled) return [];
+  const articles = await getFinalQualityCandidates(env, settings.finalQualityBatchSize);
+  const results = [];
+
+  for (const article of articles) {
+    try {
+      const [factCheck, sourceCount] = await Promise.all([
+        getFactCheckForQualityGate(env, article),
+        getArticleSourceCount(env, article.id),
+      ]);
+      if (!factCheck) throw new Error("No fact check found for final quality gate");
+
+      const quality = deterministicFinalQuality(article, factCheck, sourceCount, settings);
+      const now = new Date().toISOString();
+      const response = await sb(env, `articles?id=eq.${encodeURIComponent(article.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          final_quality_score: quality.score,
+          final_quality_passed: quality.passed,
+          final_quality_notes: quality.notes,
+          final_quality_checked_at: now,
+          status: quality.passed ? "approved" : "review",
+          updated_at: now,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Final quality save failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+      }
+
+      await sb(env, "audit_logs", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          action: quality.passed ? "article.quality_passed" : "article.quality_failed",
+          entity: "article",
+          entity_id: article.id,
+          metadata: quality.notes,
+        }),
+      });
+
+      results.push({ articleId: article.id, storyId: article.story_id, passed: quality.passed, score: quality.score, failures: quality.notes.failures });
+    } catch (error) {
+      results.push({ articleId: article.id, storyId: article.story_id, passed: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return results;
+}
+
+async function getPublishableArticles(env, settings) {
+  const now = new Date().toISOString();
+  const dueScheduled = await sb(
+    env,
+    `articles?select=id,story_id,slug,title,scheduled_for,first_published_at&status=eq.approved&final_quality_passed=eq.true&scheduled_for=not.is.null&scheduled_for=lte.${encodeURIComponent(now)}&order=scheduled_for.asc&limit=${settings.maxPublishPerRun}`
+  );
+  const scheduled = dueScheduled.ok ? await dueScheduled.json() : [];
+  if (scheduled.length >= settings.maxPublishPerRun || settings.publishingMode !== "automatic") return scheduled.slice(0, settings.maxPublishPerRun);
+
+  const remaining = settings.maxPublishPerRun - scheduled.length;
+  const automatic = await sb(
+    env,
+    `articles?select=id,story_id,slug,title,scheduled_for,first_published_at&status=eq.approved&final_quality_passed=eq.true&scheduled_for=is.null&order=final_quality_checked_at.asc&limit=${remaining}`
+  );
+  const autoRows = automatic.ok ? await automatic.json() : [];
+  return [...scheduled, ...autoRows].slice(0, settings.maxPublishPerRun);
+}
+
+async function publishEligibleArticles(env, settings) {
+  const articles = await getPublishableArticles(env, settings);
+  const published = [];
+
+  for (const article of articles) {
+    const now = new Date().toISOString();
+    const reason = article.scheduled_for ? "scheduled publication" : "automatic publication after final quality gate";
+    const response = await sb(env, `articles?id=eq.${encodeURIComponent(article.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        status: "published",
+        published_at: now,
+        first_published_at: article.first_published_at || now,
+        scheduled_for: null,
+        unpublished_at: null,
+        publication_reason: reason,
+        updated_at: now,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Article publish failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+    }
+
+    if (article.story_id) {
+      await sb(env, `stories?id=eq.${encodeURIComponent(article.story_id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ status: "published" }),
+      });
+    }
+
+    await sb(env, "audit_logs", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        action: article.scheduled_for ? "article.scheduled_published" : "article.auto_published",
+        entity: "article",
+        entity_id: article.id,
+        metadata: { reason, slug: article.slug },
+      }),
+    });
+
+    published.push({ articleId: article.id, storyId: article.story_id, slug: article.slug, title: article.title, reason });
+  }
+
+  return published;
 }
 
 function holdRetryDelayMinutes(retryCount, baseMinutes) {
@@ -3273,18 +3466,8 @@ async function runCycle(env) {
     }
   }
 
-  const articlesGeneratedToday = thresholds.articleWriterEnabled
-    ? await countArticlesGeneratedToday(env)
-    : 0;
-  const remainingDailyArticleCapacity = Math.max(
-    0,
-    thresholds.maxArticlesPerDay - articlesGeneratedToday
-  );
-  const articleJobs = thresholds.articleWriterEnabled && remainingDailyArticleCapacity > 0
-    ? await getQueuedArticleJobs(
-        env,
-        Math.min(thresholds.maxArticles, remainingDailyArticleCapacity)
-      )
+  const articleJobs = thresholds.articleWriterEnabled
+    ? await getQueuedArticleJobs(env, thresholds.maxArticles)
     : [];
   const articlesWritten = [];
 
@@ -3298,6 +3481,26 @@ async function runCycle(env) {
         error: e instanceof Error ? e.message : String(e),
       });
     }
+  }
+
+  let qualityGateResults = [];
+  try {
+    qualityGateResults = await runFinalQualityGate(env, thresholds);
+  } catch (e) {
+    failures.push({
+      stage: "final-quality-gate",
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  let publishedArticles = [];
+  try {
+    publishedArticles = await publishEligibleArticles(env, thresholds);
+  } catch (e) {
+    failures.push({
+      stage: "publishing-engine",
+      error: e instanceof Error ? e.message : String(e),
+    });
   }
 
   return {
@@ -3327,9 +3530,13 @@ async function runCycle(env) {
 
     articlesWritten,
 
-    articlesGeneratedToday,
+    qualityGateProcessed: qualityGateResults.length,
 
-    remainingDailyArticleCapacity: Math.max(0, remainingDailyArticleCapacity - articlesWritten.length),
+    qualityGateResults,
+
+    publishedCount: publishedArticles.length,
+
+    publishedArticles,
 
     failedCount:
       failures.length,
@@ -3361,7 +3568,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "article-writer-v1-safe-facts-hold-retry",
+          "publishing-engine-v1-quality-gate-public-news",
 
         model:
           env.AI_MODEL ||

@@ -149,3 +149,9 @@ v6 enforces claim-by-claim verification. It explicitly numbers research claims, 
 ## Fact Check v7 — fixed claim verification
 
 v7 is the core reliability fix. The worker no longer depends on the model producing a non-empty `claim_checks` array. Application code defines up to five fixed claim slots, validates all source indexes, repairs only missing claim slots, derives `safe_facts` from fully corroborated claims, and calculates the final confidence/verdict deterministically. The verification prompt now contains only claims plus independent evidence, not the unverified research narrative. See `FACT_CHECK_V7_FINAL_FIX.md` and `CORE_PROBLEM_REPORT.md`.
+
+## Article Writer + Publishing Engine
+
+Article Writer v1 generates drafts only from `safe_facts` belonging to APPROVED fact checks. HOLD/REJECT stories are blocked upstream and HOLD stories retry automatically on the configured schedule.
+
+Publishing Engine v1 adds a deterministic final quality gate, public `/news` and `/news/[slug]` routes, source cards, NewsArticle structured data, sitemap/robots support, scheduling, audit logs and manual/automatic publication modes. Automatic publishing intentionally defaults to `manual` until public-page quality has been observed on real approved stories. See `PUBLISHING_ENGINE_V1_SETUP.md`.

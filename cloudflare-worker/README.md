@@ -38,3 +38,7 @@ Optional environment variables are represented in `wrangler.jsonc`:
 Run the existing verification migrations in order, then use `supabase/migrations/008_fact_check_v7_fixed_claim_retry.sql` to retry qualifying HOLD stories after v7 is live.
 
 Public automatic publishing remains disabled. Only stories that pass the verification gate should later be eligible for the article writer.
+
+## Publishing Engine v1
+
+The Worker now also runs a deterministic final article quality gate after writing. It checks the upstream APPROVE fact check, confidence threshold, verified source count, safe facts, writer score, article length, SEO fields, source section and placeholder text. It then processes due scheduled publications; fully automatic publication only runs when the database setting `publishing_mode` is `automatic`.

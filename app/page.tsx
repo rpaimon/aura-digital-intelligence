@@ -27,12 +27,10 @@ export default function Home() {
           <Link href="/" className="font-black tracking-tight">
             AURA <span className="font-normal">DIGITAL INTELLIGENCE</span>
           </Link>
-          <Link
-            href="/admin/login"
-            className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white"
-          >
-            Newsroom
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/news" className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold">News</Link>
+            <Link href="/admin/login" className="rounded-full bg-black px-4 py-2 text-sm font-semibold text-white">Newsroom</Link>
+          </div>
         </div>
       </header>
 
@@ -54,12 +52,7 @@ export default function Home() {
           </p>
 
           <div className="mt-9 flex flex-wrap gap-3">
-            <Link
-              href="/admin/login"
-              className="inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 font-semibold text-white"
-            >
-              Open Newsroom <ArrowRight size={17} />
-            </Link>
+            <Link href="/news" className="inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 font-semibold text-white">Read the News <ArrowRight size={17} /></Link>
             <a
               href="https://auradigitalfiji.com"
               className="rounded-full border border-[var(--line)] bg-white px-6 py-3 font-semibold"
