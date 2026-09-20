@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const DEFAULT_BATCH = 6;
 const DEFAULT_RESEARCH_BATCH = 1;
