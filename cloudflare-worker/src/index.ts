@@ -2036,24 +2036,125 @@ async function getResearchPackage(env, storyId) {
   return rows[0] || null;
 }
 
+function calculateVerificationConfidence(aiPackage, independentSourceCount) {
+  const checks = Array.isArray(aiPackage.claim_checks) ? aiPackage.claim_checks : [];
+  const conflicts = Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [];
+  const missingEvidence = Array.isArray(aiPackage.missing_evidence)
+    ? aiPackage.missing_evidence
+    : [];
+
+  if (!checks.length) {
+    return {
+      confidence: 0,
+      supported: 0,
+      partial: 0,
+      conflicted: 0,
+      unverified: 0,
+      linkedClaims: 0,
+      totalClaims: 0,
+      supportRatio: 0,
+      sourceFactor: Math.min(1, independentSourceCount / 3),
+      aiReportedConfidence: clampScore(aiPackage.confidence),
+    };
+  }
+
+  let supported = 0;
+  let partial = 0;
+  let conflicted = 0;
+  let unverified = 0;
+  let linkedClaims = 0;
+  let weightedSupport = 0;
+
+  for (const check of checks) {
+    const status = String(check?.status || "unverified").toLowerCase();
+
+    if (status === "supported") {
+      supported += 1;
+      weightedSupport += 1;
+    } else if (status === "partial") {
+      partial += 1;
+      weightedSupport += 0.55;
+    } else if (status === "conflicted") {
+      conflicted += 1;
+    } else {
+      unverified += 1;
+      weightedSupport += 0.1;
+    }
+
+    if (Array.isArray(check?.source_indexes) && check.source_indexes.length > 0) {
+      linkedClaims += 1;
+    }
+  }
+
+  const totalClaims = checks.length;
+  const supportRatio = weightedSupport / totalClaims;
+  const sourceFactor = Math.min(1, independentSourceCount / 3);
+  const linkageRatio = linkedClaims / totalClaims;
+
+  // Deterministic verification confidence:
+  // 70% evidence support, 15% publisher diversity, 15% explicit source linkage.
+  // Penalize conflicts and unresolved evidence gaps.
+  let confidence =
+    supportRatio * 70 +
+    sourceFactor * 15 +
+    linkageRatio * 15;
+
+  confidence -= Math.min(30, conflicted * 15);
+  confidence -= Math.min(15, conflicts.length * 10);
+  confidence -= Math.min(12, missingEvidence.length * 3);
+
+  confidence = clampScore(confidence);
+
+  return {
+    confidence,
+    supported,
+    partial,
+    conflicted,
+    unverified,
+    linkedClaims,
+    totalClaims,
+    supportRatio: Math.round(supportRatio * 100) / 100,
+    sourceFactor: Math.round(sourceFactor * 100) / 100,
+    aiReportedConfidence: clampScore(aiPackage.confidence),
+  };
+}
+
 function finalFactCheckVerdict(aiPackage, independentSourceCount, settings) {
-  let verdict = ["approve", "hold", "reject"].includes(aiPackage.verdict)
+  const aiVerdict = ["approve", "hold", "reject"].includes(aiPackage.verdict)
     ? aiPackage.verdict
     : "hold";
 
-  const confidence = clampScore(aiPackage.confidence);
+  const metrics = calculateVerificationConfidence(aiPackage, independentSourceCount);
   const conflicts = Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [];
 
-  if (
-    verdict === "approve" &&
-    (independentSourceCount < settings.factCheckMinSources ||
-      confidence < settings.factCheckApproveConfidence ||
-      conflicts.length > 0)
-  ) {
-    verdict = "hold";
+  let verdict = "hold";
+
+  // Reject only when the AI explicitly identifies contradiction and the
+  // claim-level checks contain conflicting evidence.
+  if (aiVerdict === "reject" && (metrics.conflicted > 0 || conflicts.length > 0)) {
+    verdict = "reject";
   }
 
-  return { verdict, confidence };
+  // Approval remains intentionally strict. The AI must recommend APPROVE,
+  // the deterministic evidence score must clear the threshold, multiple
+  // independent publishers must be present, and no conflicts can remain.
+  if (
+    aiVerdict === "approve" &&
+    independentSourceCount >= settings.factCheckMinSources &&
+    metrics.confidence >= settings.factCheckApproveConfidence &&
+    metrics.supported >= 1 &&
+    metrics.conflicted === 0 &&
+    conflicts.length === 0
+  ) {
+    verdict = "approve";
+  }
+
+  return {
+    verdict,
+    confidence: metrics.confidence,
+    confidenceMetrics: metrics,
+    aiVerdict,
+  };
 }
 
 async function saveFactCheck(env, story, researchPackage, evidence, aiPackage, settings) {
@@ -2129,6 +2230,8 @@ async function saveFactCheck(env, story, researchPackage, evidence, aiPackage, s
     verdict: final.verdict,
     confidence: final.confidence,
     independentSourceCount: evidence.length,
+    confidenceMetrics: final.confidenceMetrics,
+    aiVerdict: final.aiVerdict,
   };
 }
 
@@ -2239,6 +2342,7 @@ Rules:
 - If evidence is insufficient, mark the claim unverified and choose HOLD.
 - If credible sources materially contradict the central claim, choose REJECT or HOLD.
 - APPROVE only when the central claims are supported by multiple independent sources.
+- The confidence field should describe how strongly the supplied evidence supports the central factual claims, from 0 to 100.
 - Do not invent Fiji/Pacific relevance or facts.
 
 Original story title:
@@ -2506,7 +2610,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "fact-check-retrieval-v4-bing-browser-diagnostics",
+          "fact-check-v5-deterministic-confidence",
 
         model:
           env.AI_MODEL ||
@@ -2571,7 +2675,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "fact-check-retrieval-v4-bing-browser-diagnostics",
+        "fact-check-v5-deterministic-confidence",
 
       endpoints: [
         "GET /health",

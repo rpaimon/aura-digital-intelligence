@@ -137,3 +137,7 @@ Independent-source verification now uses stronger GDELT multi-query discovery, p
 ## Fact Check Retrieval v3
 
 Browser Run is now used as a final fallback for JavaScript-mediated Google News URLs and publisher pages that ordinary fetch/Jina cannot read. The fact-check approval gate remains unchanged: multiple independent sources and the configured confidence threshold are still required.
+
+## Fact Check v5 - deterministic confidence
+
+The fact-check gate now calculates verification confidence from claim-level evidence rather than trusting the language model's self-reported confidence. Retrieval still requires independent publishers and approval remains conservative. See `FACT_CHECK_V5_SETUP.md`.

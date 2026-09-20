@@ -1,0 +1,19 @@
+-- Aura Digital Intelligence - Fact Check v5 confidence retry
+-- Requeue HOLD fact checks that already found enough independent sources
+-- but were saved with zero confidence under the older AI-only calibration.
+
+update jobs j
+set
+  status = 'queued'::job_status,
+  attempts = 0,
+  started_at = null,
+  finished_at = null,
+  error_message = null
+where j.job_type = 'fact_check_story'
+  and j.story_id in (
+    select fc.story_id
+    from fact_checks fc
+    where fc.verdict = 'hold'
+      and coalesce(fc.independent_source_count, 0) >= 2
+      and coalesce(fc.confidence, 0) = 0
+  );
