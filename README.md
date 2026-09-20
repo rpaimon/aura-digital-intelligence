@@ -128,3 +128,8 @@ Deterministic priority decisions (`ignore`, `watch`, `research`) and the prelimi
 ## Fact-check + verification stage
 
 Run `supabase/migrations/003_fact_check_verification.sql` before deploying the latest Worker. The verifier searches for independent coverage, retrieves evidence from distinct publishers, compares claims using structured JSON output, and stores a conservative `approve`, `hold`, or `reject` verdict. Approval requires the configured independent-source count and confidence threshold. Public auto-publishing remains off.
+
+
+## Fact-check retrieval v2
+
+Independent-source verification now uses stronger GDELT multi-query discovery, publisher-domain resolution and a Jina Reader fallback for pages that cannot be cleanly fetched with plain HTTP. The verifier still requires at least two independent usable sources and the configured confidence threshold before APPROVE. See `FACT_CHECK_V2_SETUP.md`.

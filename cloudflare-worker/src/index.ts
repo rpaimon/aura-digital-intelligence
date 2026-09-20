@@ -1309,20 +1309,57 @@ function buildSearchQuery(title) {
     .split(/\s+/)
     .filter((word) => word.length > 2 && !stop.has(word));
 
-  return [...new Set(words)].slice(0, 8).join(" ");
+  return [...new Set(words)].slice(0, 9).join(" ");
 }
 
-async function searchGdelt(title) {
-  const query = buildSearchQuery(title);
+function significantTitleTokens(title) {
+  const stop = new Set([
+    "the", "a", "an", "and", "or", "but", "to", "of", "in", "on", "for", "with",
+    "is", "are", "was", "were", "be", "as", "at", "by", "from", "it", "its", "this",
+    "that", "says", "new", "just", "about", "into", "after", "before", "how", "why",
+    "reportedly", "latest", "could", "would", "will", "can", "may",
+  ]);
+
+  return [...new Set(
+    normalizeSearchTitle(title)
+      .toLowerCase()
+      .split(/\s+/)
+      .map((word) => word.replace(/^['-]+|['-]+$/g, ""))
+      .filter((word) => word.length > 2 && !stop.has(word))
+  )];
+}
+
+function titleSimilarity(a, b) {
+  const left = significantTitleTokens(a);
+  const right = new Set(significantTitleTokens(b));
+  if (!left.length || !right.size) return 0;
+
+  const shared = left.filter((token) => right.has(token)).length;
+  const denom = Math.max(2, Math.min(left.length, right.size));
+  return shared / denom;
+}
+
+function evidenceMatchesStory(text, storyTitle, candidateTitle) {
+  const haystack = normalizeSearchTitle(text).toLowerCase();
+  const tokens = significantTitleTokens(storyTitle);
+  if (!haystack || !tokens.length) return false;
+
+  const matches = tokens.filter((token) => haystack.includes(token)).length;
+  const required = tokens.length >= 7 ? 3 : 2;
+
+  return matches >= required || titleSimilarity(storyTitle, candidateTitle) >= 0.45;
+}
+
+async function gdeltSearchQuery(query, timespan = "1month", maxRecords = 20) {
   if (!query) return [];
 
   const url = new URL("https://api.gdeltproject.org/api/v2/doc/doc");
   url.searchParams.set("query", query);
   url.searchParams.set("mode", "ArtList");
-  url.searchParams.set("maxrecords", "12");
+  url.searchParams.set("maxrecords", String(maxRecords));
   url.searchParams.set("format", "json");
   url.searchParams.set("sort", "HybridRel");
-  url.searchParams.set("timespan", "1week");
+  url.searchParams.set("timespan", timespan);
 
   try {
     const response = await fetch(url.toString(), {
@@ -1351,26 +1388,67 @@ async function searchGdelt(title) {
   }
 }
 
+async function searchGdelt(title) {
+  const normalized = normalizeSearchTitle(title);
+  const keywords = buildSearchQuery(title);
+  if (!normalized && !keywords) return [];
+
+  const exactPhrase = normalized.length > 8 ? `"${normalized.slice(0, 180)}"` : "";
+  const keyTokens = significantTitleTokens(title).slice(0, 6);
+  const nearQuery = keyTokens.length >= 3 ? `near20:"${keyTokens.join(" ")}"` : keywords;
+
+  const searches = await Promise.all([
+    exactPhrase ? gdeltSearchQuery(exactPhrase, "1month", 15) : Promise.resolve([]),
+    keywords ? gdeltSearchQuery(keywords, "1month", 25) : Promise.resolve([]),
+    nearQuery ? gdeltSearchQuery(nearQuery, "1month", 20) : Promise.resolve([]),
+  ]);
+
+  const merged = [];
+  const seen = new Set();
+
+  for (const list of searches) {
+    for (const item of list) {
+      if (!item.url || seen.has(item.url)) continue;
+      if (titleSimilarity(title, item.title) < 0.20) continue;
+      seen.add(item.url);
+      merged.push(item);
+    }
+  }
+
+  return merged.sort(
+    (a, b) => titleSimilarity(title, b.title) - titleSimilarity(title, a.title)
+  );
+}
+
 async function searchGoogleNews(title) {
-  const query = buildSearchQuery(title);
-  if (!query) return [];
+  const normalized = normalizeSearchTitle(title);
+  const keywords = buildSearchQuery(title);
+  if (!normalized && !keywords) return [];
 
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+  const queries = [
+    normalized ? `"${normalized.slice(0, 180)}"` : "",
+    keywords,
+  ].filter(Boolean);
 
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "AuraDigitalIntelligence/1.0 (+fact-check)",
-      },
-    });
+  const results = [];
+  const seen = new Set();
 
-    if (!response.ok) return [];
+  for (const query of queries) {
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
 
-    const xml = await response.text();
-    const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 12);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "AuraDigitalIntelligence/1.0 (+fact-check)",
+        },
+      });
 
-    return items
-      .map((match) => {
+      if (!response.ok) continue;
+
+      const xml = await response.text();
+      const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 15);
+
+      for (const match of items) {
         const block = match[1];
         const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/i);
         const linkMatch = block.match(/<link>([\s\S]*?)<\/link>/i);
@@ -1379,29 +1457,131 @@ async function searchGoogleNews(title) {
 
         const itemUrl = decodeXml(linkMatch?.[1] || "").trim();
         const sourceUrl = decodeXml(sourceMatch?.[1] || "").trim();
+        const itemTitle = stripTags(titleMatch?.[1] || "");
+        const domain = hostnameOf(sourceUrl) || hostnameOf(itemUrl);
 
-        return {
-          title: stripTags(titleMatch?.[1] || ""),
+        if (!itemUrl || !itemTitle || seen.has(itemUrl)) continue;
+        if (titleSimilarity(title, itemTitle) < 0.20) continue;
+
+        seen.add(itemUrl);
+        results.push({
+          title: itemTitle,
           url: itemUrl,
-          source_name: stripTags(sourceMatch?.[2] || hostnameOf(sourceUrl) || "News source"),
-          domain: hostnameOf(sourceUrl) || hostnameOf(itemUrl),
+          source_name: stripTags(sourceMatch?.[2] || domain || "News source"),
+          domain,
           published_at: stripTags(dateMatch?.[1] || "") || null,
           discovery: "google-news-rss",
-        };
-      })
-      .filter((item) => item.title && item.url);
-  } catch {
-    return [];
+        });
+      }
+    } catch {
+      // Try next search variant.
+    }
   }
+
+  return results.sort(
+    (a, b) => titleSimilarity(title, b.title) - titleSimilarity(title, a.title)
+  );
+}
+
+async function resolvePublisherCandidateWithGdelt(storyTitle, candidate) {
+  if (!candidate?.domain || candidate.domain === "news.google.com") return candidate;
+
+  const keywords = buildSearchQuery(storyTitle);
+  if (!keywords) return candidate;
+
+  const domainQuery = `${keywords} domainis:${candidate.domain}`;
+  const matches = await gdeltSearchQuery(domainQuery, "1month", 10);
+
+  const best = matches
+    .filter((item) => !samePublisherDomain(item.url, "https://news.google.com"))
+    .sort(
+      (a, b) => titleSimilarity(storyTitle, b.title) - titleSimilarity(storyTitle, a.title)
+    )[0];
+
+  if (!best || titleSimilarity(storyTitle, best.title) < 0.25) return candidate;
+
+  return {
+    ...best,
+    source_name: candidate.source_name || best.source_name,
+    discovery: "google-news-domain-via-gdelt",
+  };
+}
+
+async function fetchJinaReaderText(url) {
+  if (!url) return "";
+
+  try {
+    const readerUrl = `https://r.jina.ai/${url}`;
+    const response = await fetch(readerUrl, {
+      headers: {
+        Accept: "text/plain",
+        "User-Agent": "AuraDigitalIntelligence/1.0 (+fact-check-reader)",
+      },
+      redirect: "follow",
+    });
+
+    if (!response.ok) return "";
+
+    const text = (await response.text())
+      .replace(/\r/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return text.slice(0, 12000);
+  } catch {
+    return "";
+  }
+}
+
+async function fetchEvidenceText(candidate, story) {
+  const isGoogleNews = hostnameOf(candidate.url) === "news.google.com";
+
+  if (!isGoogleNews) {
+    const direct = await fetchSourceText(candidate.url);
+    if (
+      direct &&
+      direct.length >= 350 &&
+      evidenceMatchesStory(direct, story.title, candidate.title)
+    ) {
+      return { text: direct, fetch_method: "direct" };
+    }
+  }
+
+  const reader = await fetchJinaReaderText(candidate.url);
+  if (
+    reader &&
+    reader.length >= 350 &&
+    evidenceMatchesStory(reader, story.title, candidate.title)
+  ) {
+    return { text: reader, fetch_method: "jina-reader" };
+  }
+
+  return { text: "", fetch_method: "none" };
 }
 
 async function discoverVerificationSources(story) {
   const originalUrl = story.source_url;
   const originalDomain = hostnameOf(originalUrl);
 
-  const primary = await searchGdelt(story.title);
-  const fallback = primary.length >= 5 ? [] : await searchGoogleNews(story.title);
-  const candidates = [...primary, ...fallback];
+  const [gdelt, google] = await Promise.all([
+    searchGdelt(story.title),
+    searchGoogleNews(story.title),
+  ]);
+
+  const candidates = [...gdelt];
+
+  // Google News gives excellent publisher hints but its RSS URLs are JS-mediated.
+  // Try to turn the strongest publisher hints into direct GDELT URLs first.
+  const googleDomains = new Set();
+  for (const item of google) {
+    if (candidates.length >= 15) break;
+    if (!item.domain || googleDomains.has(item.domain)) continue;
+    if (item.domain === originalDomain) continue;
+    googleDomains.add(item.domain);
+
+    const resolved = await resolvePublisherCandidateWithGdelt(story.title, item);
+    candidates.push(resolved);
+  }
 
   const unique = [];
   const seenDomains = new Set();
@@ -1413,12 +1593,17 @@ async function discoverVerificationSources(story) {
 
     const domain = item.domain || hostnameOf(item.url);
     if (!domain || domain === originalDomain || seenDomains.has(domain)) continue;
+    if (titleSimilarity(story.title, item.title) < 0.20) continue;
 
     seenUrls.add(item.url);
     seenDomains.add(domain);
-    unique.push({ ...item, domain });
+    unique.push({
+      ...item,
+      domain,
+      similarity: Math.round(titleSimilarity(story.title, item.title) * 100),
+    });
 
-    if (unique.length >= 5) break;
+    if (unique.length >= 8) break;
   }
 
   return unique;
@@ -1431,8 +1616,8 @@ async function collectIndependentEvidence(story) {
   for (const candidate of candidates) {
     if (evidence.length >= 3) break;
 
-    const text = await fetchSourceText(candidate.url);
-    if (!text || text.length < 350) continue;
+    const fetched = await fetchEvidenceText(candidate, story);
+    if (!fetched.text) continue;
 
     evidence.push({
       index: evidence.length + 1,
@@ -1442,7 +1627,9 @@ async function collectIndependentEvidence(story) {
       domain: candidate.domain,
       published_at: candidate.published_at,
       discovery: candidate.discovery,
-      excerpt: text.slice(0, 5000),
+      fetch_method: fetched.fetch_method,
+      similarity: candidate.similarity ?? Math.round(titleSimilarity(story.title, candidate.title) * 100),
+      excerpt: fetched.text.slice(0, 5000),
     });
   }
 
@@ -1912,7 +2099,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "fact-check-and-verification-json-mode",
+          "fact-check-retrieval-v2-json-mode",
 
         model:
           env.AI_MODEL ||
@@ -1977,7 +2164,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "fact-check-and-verification-json-mode",
+        "fact-check-retrieval-v2-json-mode",
 
       endpoints: [
         "GET /health",
