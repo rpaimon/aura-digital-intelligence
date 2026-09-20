@@ -1,51 +1,14 @@
-interface Env {
-  AI: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
-  VERCEL_SCOUT_URL: string;
-  CRON_SECRET: string;
-  SUPABASE_URL: string;
-  SUPABASE_SECRET_KEY: string;
-  MAX_STORIES_PER_RUN?: string;
-  MAX_RESEARCH_PER_RUN?: string;
-  AI_MODEL?: string;
-}
-
-type SourceInfo = { name?: string; trust_score?: number } | null;
-type StoryRow = {
-  id: string;
-  source_url: string;
-  title: string;
-  description: string | null;
-  category: string | null;
-  published_at: string | null;
-  discovered_at: string;
-  importance_score?: number | null;
-  fiji_relevance_score?: number | null;
-  business_relevance_score?: number | null;
-  aura_service_relevance_score?: number | null;
-  priority_score?: number | null;
-  decision?: string | null;
-  sources: SourceInfo;
-};
-
-type AiScores = {
-  importance: number;
-  fiji_relevance: number;
-  business_relevance: number;
-  aura_service_relevance: number;
-  reason: string;
-};
-
-const DEFAULT_MODEL = "@cf/zai-org/glm-4.7-flash";
+const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const DEFAULT_BATCH = 6;
-const DEFAULT_RESEARCH_BATCH = 2;
+const DEFAULT_RESEARCH_BATCH = 1;
 
-function clampScore(value: unknown): number {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return 0;
-  return Math.max(0, Math.min(100, Math.round(number)));
+function clampScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-function supabaseHeaders(env: Env, prefer?: string) {
+function headers(env, prefer) {
   return {
     apikey: env.SUPABASE_SECRET_KEY,
     Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
@@ -54,254 +17,1363 @@ function supabaseHeaders(env: Env, prefer?: string) {
   };
 }
 
-async function sb(env: Env, path: string, init: RequestInit = {}) {
+async function sb(env, path, init = {}) {
   return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
-    headers: { ...supabaseHeaders(env), ...(init.headers ?? {}) },
+    headers: {
+      ...headers(env),
+      ...(init.headers || {}),
+    },
   });
 }
 
-async function runDiscovery(env: Env) {
-  const response = await fetch(env.VERCEL_SCOUT_URL, {
+async function runDiscovery(env) {
+  const r = await fetch(env.VERCEL_SCOUT_URL, {
     method: "GET",
-    headers: { Authorization: `Bearer ${env.CRON_SECRET}` },
+    headers: {
+      Authorization: `Bearer ${env.CRON_SECRET}`,
+    },
   });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Vercel RSS Scout failed (${response.status}): ${text.slice(0, 300)}`);
-  try { return JSON.parse(text); } catch { return { ok: true, response: text.slice(0, 300) }; }
+
+  const text = await r.text();
+
+  if (!r.ok) {
+    throw new Error(
+      `Vercel RSS Scout failed (${r.status}): ${text.slice(0, 300)}`
+    );
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      ok: true,
+      response: text.slice(0, 300),
+    };
+  }
 }
 
-async function getSettings(env: Env) {
-  const response = await sb(env, "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run)");
-  if (!response.ok) return { watch: 50, research: 72, maxResearch: DEFAULT_RESEARCH_BATCH };
-  const rows = await response.json() as Array<{ key: string; value: unknown }>;
-  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+async function getSettings(env) {
+  const r = await sb(
+    env,
+    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run)"
+  );
+
+  if (!r.ok) {
+    return {
+      watch: 50,
+      research: 72,
+      maxResearch: DEFAULT_RESEARCH_BATCH,
+    };
+  }
+
+  const rows = await r.json();
+
+  const map = Object.fromEntries(
+    rows.map((x) => [x.key, x.value])
+  );
+
   return {
-    watch: Number(map.watch_priority_threshold ?? 50),
-    research: Number(map.research_priority_threshold ?? 72),
-    maxResearch: Math.max(1, Math.min(4, Number(env.MAX_RESEARCH_PER_RUN ?? map.max_research_per_run ?? DEFAULT_RESEARCH_BATCH))),
+    watch: Number(
+      map.watch_priority_threshold ?? 50
+    ),
+
+    research: Number(
+      map.research_priority_threshold ?? 72
+    ),
+
+    maxResearch: Math.max(
+      1,
+      Math.min(
+        2,
+        Number(
+          env.MAX_RESEARCH_PER_RUN ??
+            map.max_research_per_run ??
+            DEFAULT_RESEARCH_BATCH
+        ) || DEFAULT_RESEARCH_BATCH
+      )
+    ),
   };
 }
 
-async function getUnscoredStories(env: Env): Promise<StoryRow[]> {
-  const limit = Math.max(1, Math.min(12, Number(env.MAX_STORIES_PER_RUN ?? DEFAULT_BATCH) || DEFAULT_BATCH));
-  const query = new URLSearchParams({
-    select: "id,source_url,title,description,category,published_at,discovered_at,sources(name,trust_score)",
+async function getUnscoredStories(env) {
+  const limit = Math.max(
+    1,
+    Math.min(
+      12,
+      Number(
+        env.MAX_STORIES_PER_RUN ??
+          DEFAULT_BATCH
+      ) || DEFAULT_BATCH
+    )
+  );
+
+  const q = new URLSearchParams({
+    select:
+      "id,source_url,title,description,category,published_at,discovered_at,sources(name,trust_score)",
+
     status: "eq.discovered",
+
     order: "discovered_at.asc",
+
     limit: String(limit),
   });
-  const response = await sb(env, `stories?${query}`);
-  if (!response.ok) throw new Error(`Supabase story fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
-  return await response.json() as StoryRow[];
-}
 
-function extractJson(raw: unknown): Record<string, unknown> {
-  const text = typeof raw === "string" ? raw : raw && typeof raw === "object" && "response" in raw
-    ? String((raw as { response?: unknown }).response ?? "") : JSON.stringify(raw ?? "");
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] ?? text;
-  const object = fenced.match(/\{[\s\S]*\}/)?.[0];
-  if (!object) throw new Error("AI response did not contain JSON");
-  return JSON.parse(object) as Record<string, unknown>;
-}
+  const r = await sb(
+    env,
+    `stories?${q}`
+  );
 
-async function scoreStory(env: Env, story: StoryRow): Promise<AiScores> {
-  const sourceTrust = clampScore(story.sources?.trust_score ?? 70);
-  const prompt = `You are the story triage engine for Aura Digital Intelligence, a technology intelligence publication serving Fiji and Pacific businesses.\n\nScore from 0 to 100: importance, fiji_relevance, business_relevance, aura_service_relevance. Do not force a Fiji angle. Source trust: ${sourceTrust}/100.\n\nReturn ONLY JSON: {"importance":0,"fiji_relevance":0,"business_relevance":0,"aura_service_relevance":0,"reason":"one short sentence"}\n\nTitle: ${story.title}\nCategory: ${story.category ?? "Unknown"}\nDescription: ${(story.description ?? "No description").slice(0, 1800)}`;
-  const response = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, { prompt, max_tokens: 220, temperature: 0.1 });
-  const parsed = extractJson(response);
-  return {
-    importance: clampScore(parsed.importance),
-    fiji_relevance: clampScore(parsed.fiji_relevance),
-    business_relevance: clampScore(parsed.business_relevance),
-    aura_service_relevance: clampScore(parsed.aura_service_relevance),
-    reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 400) : "Scored by Workers AI",
-  };
-}
-
-function calculatePriority(story: StoryRow, scores: AiScores) {
-  const sourceTrust = clampScore(story.sources?.trust_score ?? 70);
-  return Math.round(scores.importance * 0.30 + scores.fiji_relevance * 0.20 + scores.business_relevance * 0.25 + scores.aura_service_relevance * 0.15 + sourceTrust * 0.10);
-}
-
-function decide(priority: number, scores: AiScores, thresholds: { watch: number; research: number }) {
-  let decision: "ignore" | "watch" | "research" = "ignore";
-  if (priority >= thresholds.research && (scores.importance >= 55 || scores.business_relevance >= 65 || scores.aura_service_relevance >= 65)) decision = "research";
-  else if (priority >= thresholds.watch) decision = "watch";
-
-  const strongest = [
-    ["importance", scores.importance], ["Fiji/Pacific relevance", scores.fiji_relevance],
-    ["business relevance", scores.business_relevance], ["Aura relevance", scores.aura_service_relevance],
-  ].sort((a, b) => Number(b[1]) - Number(a[1]))[0];
-  return { decision, reason: `${decision.toUpperCase()} at priority ${priority}; strongest signal is ${strongest[0]} (${strongest[1]}).` };
-}
-
-async function saveScoringDecision(env: Env, story: StoryRow, scores: AiScores, thresholds: { watch: number; research: number }) {
-  const priority = calculatePriority(story, scores);
-  const choice = decide(priority, scores, thresholds);
-  const status = choice.decision === "ignore" ? "rejected" : choice.decision === "research" ? "researching" : "scored";
-  const response = await sb(env, `stories?id=eq.${encodeURIComponent(story.id)}`, {
-    method: "PATCH", headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({
-      importance_score: scores.importance,
-      fiji_relevance_score: scores.fiji_relevance,
-      business_relevance_score: scores.business_relevance,
-      aura_service_relevance_score: scores.aura_service_relevance,
-      priority_score: priority,
-      decision: choice.decision,
-      decision_reason: `${choice.reason} ${scores.reason}`.slice(0, 700),
-      decided_at: new Date().toISOString(),
-      status,
-    }),
-  });
-  if (!response.ok) throw new Error(`Supabase decision update failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
-  if (choice.decision === "research") await enqueueResearch(env, story.id, priority);
-  return { priority, decision: choice.decision, reason: choice.reason };
-}
-
-async function enqueueResearch(env: Env, storyId: string, priority: number) {
-  const existing = await sb(env, `jobs?select=id&job_type=eq.research_story&story_id=eq.${encodeURIComponent(storyId)}&status=in.(queued,processing,completed)&limit=1`);
-  if (existing.ok && (await existing.json() as unknown[]).length) return;
-  await sb(env, "jobs", {
-    method: "POST", headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ job_type: "research_story", status: "queued", priority, story_id: storyId, payload: { reason: "automatic decision engine" } }),
-  });
-}
-
-function decodeHtml(text: string) {
-  return text.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">");
-}
-
-function pageToText(html: string) {
-  return decodeHtml(html)
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, " ")
-    .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ").trim().slice(0, 14000);
-}
-
-async function fetchSourceText(url: string) {
-  try {
-    const response = await fetch(url, { headers: { "User-Agent": "AuraDigitalIntelligence/1.0 (+research; respectful-fetch)" }, redirect: "follow" });
-    if (!response.ok) return "";
-    return pageToText(await response.text());
-  } catch { return ""; }
-}
-
-async function getQueuedResearchJobs(env: Env, limit: number) {
-  const query = new URLSearchParams({
-    select: "id,story_id,priority,stories(id,source_url,title,description,category,published_at,sources(name,trust_score))",
-    job_type: "eq.research_story", status: "eq.queued", order: "priority.desc,created_at.asc", limit: String(limit),
-  });
-  const response = await sb(env, `jobs?${query}`);
-  if (!response.ok) throw new Error(`Research queue fetch failed (${response.status})`);
-  return await response.json() as Array<{ id: string; story_id: string; priority: number; stories: StoryRow }>;
-}
-
-async function updateJob(env: Env, id: string, patch: Record<string, unknown>) {
-  await sb(env, `jobs?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch) });
-}
-
-async function researchStory(env: Env, job: { id: string; story_id: string; stories: StoryRow }) {
-  const story = job.stories;
-  await updateJob(env, job.id, { status: "processing", attempts: 1, started_at: new Date().toISOString() });
-  const pageText = await fetchSourceText(story.source_url);
-  const evidence = pageText || `${story.title}\n${story.description ?? ""}`;
-  const prompt = `You are a cautious research assistant for Aura Digital Intelligence. Build a preliminary research package from the supplied source text. This is NOT final fact-checking and must not invent corroboration. Distinguish source claims from verified facts.\n\nReturn ONLY JSON with: summary (string), key_facts (array of 3-7 concise strings), why_it_matters (string), fiji_pacific_angle (string), business_implications (array), aura_opportunity (string), risks_uncertainties (array), claims_to_verify (array), confidence (0-100), recommended_angle (string).\n\nStory: ${story.title}\nURL: ${story.source_url}\nCategory: ${story.category ?? "Unknown"}\nSource text:\n${evidence.slice(0, 12000)}`;
-  try {
-    const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, { prompt, max_tokens: 900, temperature: 0.1 });
-    const pkg = extractJson(raw);
-    const confidence = clampScore(pkg.confidence);
-    const existing = await sb(env, `research?select=id&story_id=eq.${encodeURIComponent(story.id)}&source_type=eq.ai-research-package&limit=1`);
-    const rows = existing.ok ? await existing.json() as Array<{ id: string }> : [];
-    const payload = {
-      story_id: story.id,
-      source_url: story.source_url,
-      source_name: story.sources?.name ?? "Original source",
-      source_type: "ai-research-package",
-      key_facts: pkg,
-      source_date: story.published_at,
-      credibility: confidence,
-      notes: typeof pkg.summary === "string" ? pkg.summary.slice(0, 1500) : "Preliminary AI research package",
-    };
-    if (rows.length) {
-      await sb(env, `research?id=eq.${rows[0].id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(payload) });
-    } else {
-      await sb(env, "research", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(payload) });
-    }
-    await updateJob(env, job.id, { status: "completed", result: pkg, finished_at: new Date().toISOString() });
-    return { storyId: story.id, title: story.title, confidence, sourceFetched: Boolean(pageText) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Research failed";
-    await updateJob(env, job.id, { status: "failed", error_message: message, finished_at: new Date().toISOString() });
-    throw error;
+  if (!r.ok) {
+    throw new Error(
+      `Supabase story fetch failed (${r.status}): ${(await r.text()).slice(
+        0,
+        300
+      )}`
+    );
   }
+
+  return r.json();
 }
 
-async function writeCycleLog(env: Env, result: Record<string, unknown>, errorMessage?: string) {
-  const now = new Date().toISOString();
-  await sb(env, "jobs", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
-    job_type: "cloudflare_intelligence_cycle", status: errorMessage ? "failed" : "completed", priority: 90,
-    attempts: 1, payload: { scheduler: "cloudflare", ai: "workers-ai", stage: "decision-and-research" }, result,
-    error_message: errorMessage ?? null, started_at: now, finished_at: now,
-  }) });
-}
+function parseStructured(raw) {
+  if (!raw) {
+    throw new Error(
+      "AI returned an empty response"
+    );
+  }
 
-async function runCycle(env: Env) {
-  const startedAt = new Date().toISOString();
-  const thresholds = await getSettings(env);
-  const discovery = await runDiscovery(env);
-  const stories = await getUnscoredStories(env);
-  const decisions: Array<Record<string, unknown>> = [];
-  const failures: Array<Record<string, unknown>> = [];
+  if (
+    raw.response &&
+    typeof raw.response === "object"
+  ) {
+    return raw.response;
+  }
 
-  for (const story of stories) {
+  const candidates = [];
+
+  if (
+    typeof raw.response === "string"
+  ) {
+    candidates.push(raw.response);
+  }
+
+  if (
+    Array.isArray(raw.choices) &&
+    raw.choices[0]
+  ) {
+    const c = raw.choices[0];
+
+    if (
+      typeof c?.message?.content ===
+      "string"
+    ) {
+      candidates.push(
+        c.message.content
+      );
+    }
+
+    if (
+      typeof c?.text === "string"
+    ) {
+      candidates.push(c.text);
+    }
+  }
+
+  if (
+    raw.response &&
+    Array.isArray(
+      raw.response.choices
+    ) &&
+    raw.response.choices[0]
+  ) {
+    const c =
+      raw.response.choices[0];
+
+    if (
+      typeof c?.message?.content ===
+      "string"
+    ) {
+      candidates.push(
+        c.message.content
+      );
+    }
+
+    if (
+      typeof c?.text === "string"
+    ) {
+      candidates.push(c.text);
+    }
+  }
+
+  if (typeof raw === "string") {
+    candidates.push(raw);
+  }
+
+  for (let text of candidates) {
+    text = text
+      .trim()
+      .replace(
+        /^```json\s*/i,
+        ""
+      )
+      .replace(
+        /```$/i,
+        ""
+      )
+      .trim();
+
     try {
-      const scores = await scoreStory(env, story);
-      const decision = await saveScoringDecision(env, story, scores, thresholds);
-      decisions.push({ storyId: story.id, title: story.title, ...scores, ...decision });
-    } catch (error) {
-      failures.push({ storyId: story.id, title: story.title, error: error instanceof Error ? error.message : "Unknown scoring error" });
+      return JSON.parse(text);
+    } catch {}
+
+    const start =
+      text.indexOf("{");
+
+    const end =
+      text.lastIndexOf("}");
+
+    if (
+      start !== -1 &&
+      end > start
+    ) {
+      try {
+        return JSON.parse(
+          text.slice(
+            start,
+            end + 1
+          )
+        );
+      } catch {}
     }
   }
 
-  const jobs = await getQueuedResearchJobs(env, thresholds.maxResearch);
-  const researched: Array<Record<string, unknown>> = [];
-  for (const job of jobs) {
-    try { researched.push(await researchStory(env, job)); }
-    catch (error) { failures.push({ storyId: job.story_id, stage: "research", error: error instanceof Error ? error.message : "Research failed" }); }
+  throw new Error(
+    `AI structured response could not be parsed: ${JSON.stringify(
+      raw
+    ).slice(0, 500)}`
+  );
+}
+
+const SCORE_SCHEMA = {
+  type: "object",
+
+  properties: {
+    importance: {
+      type: "number",
+      minimum: 0,
+      maximum: 100,
+    },
+
+    fiji_relevance: {
+      type: "number",
+      minimum: 0,
+      maximum: 100,
+    },
+
+    business_relevance: {
+      type: "number",
+      minimum: 0,
+      maximum: 100,
+    },
+
+    aura_service_relevance: {
+      type: "number",
+      minimum: 0,
+      maximum: 100,
+    },
+
+    reason: {
+      type: "string",
+    },
+  },
+
+  required: [
+    "importance",
+    "fiji_relevance",
+    "business_relevance",
+    "aura_service_relevance",
+    "reason",
+  ],
+};
+
+const RESEARCH_SCHEMA = {
+  type: "object",
+
+  properties: {
+    summary: {
+      type: "string",
+    },
+
+    key_facts: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    why_it_matters: {
+      type: "string",
+    },
+
+    fiji_pacific_angle: {
+      type: "string",
+    },
+
+    business_implications: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    aura_opportunity: {
+      type: "string",
+    },
+
+    risks_uncertainties: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    claims_to_verify: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 100,
+    },
+
+    recommended_angle: {
+      type: "string",
+    },
+  },
+
+  required: [
+    "summary",
+    "key_facts",
+    "why_it_matters",
+    "fiji_pacific_angle",
+    "business_implications",
+    "aura_opportunity",
+    "risks_uncertainties",
+    "claims_to_verify",
+    "confidence",
+    "recommended_angle",
+  ],
+};
+
+async function scoreStory(
+  env,
+  story
+) {
+  const trust =
+    clampScore(
+      story.sources
+        ?.trust_score ?? 70
+    );
+
+  const prompt = `
+Score this technology/news story for Aura Digital Intelligence from 0 to 100.
+
+importance:
+Global technology/business significance.
+
+fiji_relevance:
+Realistic relevance to Fiji or Pacific markets,
+organisations, consumers, businesses or regulation.
+Do not force a Fiji angle.
+
+business_relevance:
+Usefulness to business owners, managers,
+entrepreneurs or decision makers.
+
+aura_service_relevance:
+Relevance to web development,
+ecommerce,
+mobile apps,
+AI automation,
+cybersecurity,
+cloud,
+SEO,
+digital marketing,
+or digital transformation.
+
+Source trust:
+${trust}/100
+
+Title:
+${story.title}
+
+Category:
+${story.category ?? "Unknown"}
+
+Description:
+${(
+  story.description ??
+  "No description"
+).slice(0, 1800)}
+`;
+
+  const raw =
+    await env.AI.run(
+      env.AI_MODEL ||
+        DEFAULT_MODEL,
+
+      {
+        messages: [
+          {
+            role: "system",
+
+            content:
+              "You are a conservative technology-news scoring engine. Do not invent facts.",
+          },
+
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+
+        response_format: {
+          type: "json_schema",
+          json_schema:
+            SCORE_SCHEMA,
+        },
+
+        max_tokens: 300,
+
+        temperature: 0.1,
+      }
+    );
+
+  const p =
+    parseStructured(raw);
+
+  return {
+    importance:
+      clampScore(
+        p.importance
+      ),
+
+    fiji_relevance:
+      clampScore(
+        p.fiji_relevance
+      ),
+
+    business_relevance:
+      clampScore(
+        p.business_relevance
+      ),
+
+    aura_service_relevance:
+      clampScore(
+        p.aura_service_relevance
+      ),
+
+    reason:
+      String(
+        p.reason ||
+          "Scored by Workers AI"
+      ).slice(0, 400),
+  };
+}
+
+function priority(
+  story,
+  s
+) {
+  const trust =
+    clampScore(
+      story.sources
+        ?.trust_score ?? 70
+    );
+
+  return Math.round(
+    s.importance * 0.30 +
+      s.fiji_relevance * 0.20 +
+      s.business_relevance *
+        0.25 +
+      s.aura_service_relevance *
+        0.15 +
+      trust * 0.10
+  );
+}
+
+function decide(
+  p,
+  s,
+  thresholds
+) {
+  if (
+    p >=
+      thresholds.research &&
+    (
+      s.importance >= 55 ||
+      s.business_relevance >=
+        65 ||
+      s.aura_service_relevance >=
+        65
+    )
+  ) {
+    return "research";
   }
 
-  const result = {
-    ok: failures.length === 0, startedAt, finishedAt: new Date().toISOString(), discovery,
-    scoredCount: decisions.length, decisions, researchProcessed: researched.length, researched,
-    failedCount: failures.length, failures, thresholds,
+  if (
+    p >= thresholds.watch
+  ) {
+    return "watch";
+  }
+
+  return "ignore";
+}
+
+async function enqueueResearch(
+  env,
+  storyId,
+  p
+) {
+  const check =
+    await sb(
+      env,
+
+      `jobs?select=id&job_type=eq.research_story&story_id=eq.${encodeURIComponent(
+        storyId
+      )}&status=in.(queued,processing,completed)&limit=1`
+    );
+
+  if (
+    check.ok &&
+    (await check.json()).length
+  ) {
+    return;
+  }
+
+  const r =
+    await sb(
+      env,
+      "jobs",
+
+      {
+        method: "POST",
+
+        headers: {
+          Prefer:
+            "return=minimal",
+        },
+
+        body:
+          JSON.stringify({
+            job_type:
+              "research_story",
+
+            status: "queued",
+
+            priority: p,
+
+            story_id:
+              storyId,
+
+            payload: {
+              reason:
+                "automatic decision engine",
+            },
+          }),
+      }
+    );
+
+  if (!r.ok) {
+    throw new Error(
+      `Research queue insert failed (${r.status}): ${(await r.text()).slice(
+        0,
+        300
+      )}`
+    );
+  }
+}
+
+async function saveDecision(
+  env,
+  story,
+  scores,
+  thresholds
+) {
+  const p =
+    priority(
+      story,
+      scores
+    );
+
+  const d =
+    decide(
+      p,
+      scores,
+      thresholds
+    );
+
+  const status =
+    d === "ignore"
+      ? "rejected"
+      : d === "research"
+        ? "researching"
+        : "scored";
+
+  const r =
+    await sb(
+      env,
+
+      `stories?id=eq.${encodeURIComponent(
+        story.id
+      )}`,
+
+      {
+        method: "PATCH",
+
+        headers: {
+          Prefer:
+            "return=minimal",
+        },
+
+        body:
+          JSON.stringify({
+            importance_score:
+              scores.importance,
+
+            fiji_relevance_score:
+              scores.fiji_relevance,
+
+            business_relevance_score:
+              scores.business_relevance,
+
+            aura_service_relevance_score:
+              scores.aura_service_relevance,
+
+            priority_score: p,
+
+            decision: d,
+
+            decision_reason:
+              `${d.toUpperCase()} at priority ${p}. ${scores.reason}`.slice(
+                0,
+                700
+              ),
+
+            decided_at:
+              new Date().toISOString(),
+
+            status,
+          }),
+      }
+    );
+
+  if (!r.ok) {
+    throw new Error(
+      `Supabase decision update failed (${r.status}): ${(await r.text()).slice(
+        0,
+        300
+      )}`
+    );
+  }
+
+  if (
+    d === "research"
+  ) {
+    await enqueueResearch(
+      env,
+      story.id,
+      p
+    );
+  }
+
+  return {
+    priority: p,
+    decision: d,
   };
-  await writeCycleLog(env, result, failures.length ? `${failures.length} automation failure(s)` : undefined);
-  return result;
+}
+
+function htmlToText(html) {
+  return html
+    .replace(
+      /<script\b[^>]*>[\s\S]*?<\/script>/gi,
+      " "
+    )
+
+    .replace(
+      /<style\b[^>]*>[\s\S]*?<\/style>/gi,
+      " "
+    )
+
+    .replace(
+      /<nav\b[^>]*>[\s\S]*?<\/nav>/gi,
+      " "
+    )
+
+    .replace(
+      /<footer\b[^>]*>[\s\S]*?<\/footer>/gi,
+      " "
+    )
+
+    .replace(
+      /<[^>]+>/g,
+      " "
+    )
+
+    .replace(
+      /&nbsp;/gi,
+      " "
+    )
+
+    .replace(
+      /&amp;/gi,
+      "&"
+    )
+
+    .replace(
+      /&quot;/gi,
+      '"'
+    )
+
+    .replace(
+      /&#39;|&apos;/gi,
+      "'"
+    )
+
+    .replace(
+      /&lt;/gi,
+      "<"
+    )
+
+    .replace(
+      /&gt;/gi,
+      ">"
+    )
+
+    .replace(
+      /\s+/g,
+      " "
+    )
+
+    .trim()
+
+    .slice(
+      0,
+      9000
+    );
+}
+
+async function fetchSourceText(
+  url
+) {
+  try {
+    const r =
+      await fetch(
+        url,
+
+        {
+          headers: {
+            "User-Agent":
+              "AuraDigitalIntelligence/1.0 (+research; respectful-fetch)",
+          },
+
+          redirect:
+            "follow",
+        }
+      );
+
+    if (!r.ok) {
+      return "";
+    }
+
+    return htmlToText(
+      await r.text()
+    );
+  } catch {
+    return "";
+  }
+}
+
+async function getQueuedResearchJobs(
+  env,
+  limit
+) {
+  const q =
+    new URLSearchParams({
+      select:
+        "id,story_id,priority,stories(id,source_url,title,description,category,published_at,sources(name,trust_score))",
+
+      job_type:
+        "eq.research_story",
+
+      status: "eq.queued",
+
+      order:
+        "priority.desc,created_at.asc",
+
+      limit:
+        String(limit),
+    });
+
+  const r =
+    await sb(
+      env,
+      `jobs?${q}`
+    );
+
+  if (!r.ok) {
+    throw new Error(
+      `Research queue fetch failed (${r.status}): ${(await r.text()).slice(
+        0,
+        300
+      )}`
+    );
+  }
+
+  return r.json();
+}
+
+async function updateJob(
+  env,
+  id,
+  patch
+) {
+  const r =
+    await sb(
+      env,
+
+      `jobs?id=eq.${encodeURIComponent(
+        id
+      )}`,
+
+      {
+        method: "PATCH",
+
+        headers: {
+          Prefer:
+            "return=minimal",
+        },
+
+        body:
+          JSON.stringify(
+            patch
+          ),
+      }
+    );
+
+  if (!r.ok) {
+    throw new Error(
+      `Job update failed (${r.status}): ${(await r.text()).slice(
+        0,
+        300
+      )}`
+    );
+  }
+}
+
+async function researchStory(
+  env,
+  job
+) {
+  const story =
+    job.stories;
+
+  await updateJob(
+    env,
+    job.id,
+
+    {
+      status:
+        "processing",
+
+      attempts: 1,
+
+      started_at:
+        new Date().toISOString(),
+    }
+  );
+
+  try {
+    const page =
+      await fetchSourceText(
+        story.source_url
+      );
+
+    const evidence =
+      page ||
+      `${story.title}
+${story.description ?? ""}`;
+
+    const prompt = `
+Build a preliminary research package for Aura Digital Intelligence.
+
+Use only the supplied source material.
+
+This is NOT final fact-checking.
+
+Do not invent corroboration.
+
+Treat source claims as source claims.
+
+If the Fiji/Pacific angle is weak or nonexistent, say so plainly.
+
+Story:
+${story.title}
+
+URL:
+${story.source_url}
+
+Category:
+${story.category ?? "Unknown"}
+
+Source material:
+${evidence.slice(
+  0,
+  9000
+)}
+`;
+
+    const raw =
+      await env.AI.run(
+        env.AI_MODEL ||
+          DEFAULT_MODEL,
+
+        {
+          messages: [
+            {
+              role:
+                "system",
+
+              content:
+                "You are a cautious research assistant. Never invent evidence or claim verification not present in the supplied material.",
+            },
+
+            {
+              role:
+                "user",
+
+              content:
+                prompt,
+            },
+          ],
+
+          response_format: {
+            type:
+              "json_schema",
+
+            json_schema:
+              RESEARCH_SCHEMA,
+          },
+
+          max_tokens: 750,
+
+          temperature: 0.1,
+        }
+      );
+
+    const pkg =
+      parseStructured(raw);
+
+    pkg.confidence =
+      clampScore(
+        pkg.confidence
+      );
+
+    const existing =
+      await sb(
+        env,
+
+        `research?select=id&story_id=eq.${encodeURIComponent(
+          story.id
+        )}&source_type=eq.ai-research-package&limit=1`
+      );
+
+    const rows =
+      existing.ok
+        ? await existing.json()
+        : [];
+
+    const payload = {
+      story_id:
+        story.id,
+
+      source_url:
+        story.source_url,
+
+      source_name:
+        story.sources
+          ?.name ??
+        "Original source",
+
+      source_type:
+        "ai-research-package",
+
+      key_facts:
+        pkg,
+
+      source_date:
+        story.published_at,
+
+      credibility:
+        pkg.confidence,
+
+      notes:
+        String(
+          pkg.summary ||
+            "Preliminary AI research package"
+        ).slice(
+          0,
+          1500
+        ),
+    };
+
+    const save =
+      rows.length
+        ? await sb(
+            env,
+
+            `research?id=eq.${rows[0].id}`,
+
+            {
+              method:
+                "PATCH",
+
+              headers: {
+                Prefer:
+                  "return=minimal",
+              },
+
+              body:
+                JSON.stringify(
+                  payload
+                ),
+            }
+          )
+        : await sb(
+            env,
+            "research",
+
+            {
+              method:
+                "POST",
+
+              headers: {
+                Prefer:
+                  "return=minimal",
+              },
+
+              body:
+                JSON.stringify(
+                  payload
+                ),
+            }
+          );
+
+    if (!save.ok) {
+      throw new Error(
+        `Research save failed (${save.status}): ${(await save.text()).slice(
+          0,
+          300
+        )}`
+      );
+    }
+
+    await updateJob(
+      env,
+      job.id,
+
+      {
+        status:
+          "completed",
+
+        result: pkg,
+
+        error_message:
+          null,
+
+        finished_at:
+          new Date().toISOString(),
+      }
+    );
+
+    return {
+      storyId:
+        story.id,
+
+      title:
+        story.title,
+
+      confidence:
+        pkg.confidence,
+
+      sourceFetched:
+        Boolean(page),
+    };
+
+  } catch (e) {
+    const message =
+      e instanceof Error
+        ? e.message
+        : String(e);
+
+    try {
+      await updateJob(
+        env,
+        job.id,
+
+        {
+          status:
+            "failed",
+
+          error_message:
+            message,
+
+          finished_at:
+            new Date().toISOString(),
+        }
+      );
+    } catch {}
+
+    throw e;
+  }
+}
+
+async function runCycle(env) {
+  const thresholds =
+    await getSettings(env);
+
+  const discovery =
+    await runDiscovery(env);
+
+  const stories =
+    await getUnscoredStories(
+      env
+    );
+
+  const decisions = [];
+  const failures = [];
+
+  for (
+    const story of stories
+  ) {
+    try {
+      const scores =
+        await scoreStory(
+          env,
+          story
+        );
+
+      const result =
+        await saveDecision(
+          env,
+          story,
+          scores,
+          thresholds
+        );
+
+      decisions.push({
+        storyId:
+          story.id,
+
+        title:
+          story.title,
+
+        ...scores,
+        ...result,
+      });
+
+    } catch (e) {
+      failures.push({
+        storyId:
+          story.id,
+
+        title:
+          story.title,
+
+        stage:
+          "scoring",
+
+        error:
+          e instanceof Error
+            ? e.message
+            : String(e),
+      });
+    }
+  }
+
+  const jobs =
+    await getQueuedResearchJobs(
+      env,
+      thresholds.maxResearch
+    );
+
+  const researched = [];
+
+  for (
+    const job of jobs
+  ) {
+    try {
+      researched.push(
+        await researchStory(
+          env,
+          job
+        )
+      );
+
+    } catch (e) {
+      failures.push({
+        storyId:
+          job.story_id,
+
+        stage:
+          "research",
+
+        error:
+          e instanceof Error
+            ? e.message
+            : String(e),
+      });
+    }
+  }
+
+  return {
+    ok:
+      failures.length === 0,
+
+    discovery,
+
+    scoredCount:
+      decisions.length,
+
+    decisions,
+
+    researchProcessed:
+      researched.length,
+
+    researched,
+
+    failedCount:
+      failures.length,
+
+    failures,
+
+    thresholds,
+  };
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === "/health") return Response.json({ ok: true, service: "aura-intelligence-automation", stage: "decision-and-research" });
-    if (url.pathname === "/run" && request.method === "POST") {
-      if (!env.CRON_SECRET || request.headers.get("authorization") !== `Bearer ${env.CRON_SECRET}`) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-      try { return Response.json(await runCycle(env)); }
-      catch (error) {
-        const message = error instanceof Error ? error.message : "Automation cycle failed";
-        await writeCycleLog(env, { ok: false }, message);
-        return Response.json({ ok: false, error: message }, { status: 500 });
+  async fetch(
+    request,
+    env
+  ) {
+    const url =
+      new URL(
+        request.url
+      );
+
+    if (
+      url.pathname ===
+      "/health"
+    ) {
+      return Response.json({
+        ok: true,
+
+        service:
+          "aura-intelligence-automation",
+
+        stage:
+          "decision-and-research-json-mode",
+
+        model:
+          env.AI_MODEL ||
+          DEFAULT_MODEL,
+      });
+    }
+
+    if (
+      url.pathname ===
+        "/run" &&
+      request.method ===
+        "POST"
+    ) {
+      if (
+        request.headers.get(
+          "authorization"
+        ) !==
+        `Bearer ${env.CRON_SECRET}`
+      ) {
+        return Response.json(
+          {
+            ok: false,
+            error:
+              "Unauthorized",
+          },
+
+          {
+            status: 401,
+          }
+        );
+      }
+
+      try {
+        return Response.json(
+          await runCycle(
+            env
+          )
+        );
+
+      } catch (e) {
+        return Response.json(
+          {
+            ok: false,
+
+            error:
+              e instanceof Error
+                ? e.message
+                : String(e),
+          },
+
+          {
+            status: 500,
+          }
+        );
       }
     }
-    return Response.json({ ok: true, service: "Aura Digital Intelligence automation", endpoints: ["GET /health", "POST /run"] });
+
+    return Response.json({
+      ok: true,
+
+      service:
+        "Aura Digital Intelligence automation",
+
+      stage:
+        "decision-and-research-json-mode",
+
+      endpoints: [
+        "GET /health",
+        "POST /run",
+      ],
+    });
   },
-  async scheduled(_controller: unknown, env: Env, ctx: { waitUntil: (promise: Promise<unknown>) => void }) {
-    ctx.waitUntil(runCycle(env).catch(async (error) => {
-      const message = error instanceof Error ? error.message : "Scheduled cycle failed";
-      await writeCycleLog(env, { ok: false }, message);
-    }));
+
+  async scheduled(
+    controller,
+    env,
+    ctx
+  ) {
+    ctx.waitUntil(
+      runCycle(env).catch(
+        (e) =>
+          console.error(
+            "Scheduled cycle failed:",
+            e
+          )
+      )
+    );
   },
 };
