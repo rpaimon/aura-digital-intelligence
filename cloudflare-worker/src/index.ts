@@ -971,7 +971,7 @@ async function getQueuedResearchJobs(
   const q =
     new URLSearchParams({
       select:
-        "id,story_id,priority,stories(id,source_url,title,description,category,published_at,sources(name,trust_score))",
+        "id,story_id,priority,attempts,max_attempts,stories(id,source_url,title,description,category,published_at,sources(name,trust_score))",
 
       job_type:
         "eq.research_story",
@@ -1946,7 +1946,7 @@ async function researchStory(
       status:
         "processing",
 
-      attempts: 1,
+      attempts: Number(job.attempts || 0) + 1,
 
       started_at:
         new Date().toISOString(),
@@ -2948,7 +2948,7 @@ async function enqueueFactCheck(env, storyId, priority) {
 async function getQueuedFactCheckJobs(env, limit) {
   const query = new URLSearchParams({
     select:
-      "id,story_id,priority,stories(id,source_url,title,description,category,published_at,priority_score,sources(name,trust_score))",
+      "id,story_id,priority,attempts,max_attempts,stories(id,source_url,title,description,category,published_at,priority_score,sources(name,trust_score))",
     job_type: "eq.fact_check_story",
     status: "eq.queued",
     order: "priority.desc,created_at.asc",
@@ -3385,7 +3385,7 @@ async function factCheckStory(env, job, settings) {
 
   await updateJob(env, job.id, {
     status: "processing",
-    attempts: 1,
+    attempts: Number(job.attempts || 0) + 1,
     started_at: new Date().toISOString(),
     error_message: null,
   });
@@ -3597,9 +3597,108 @@ ${evidenceText.slice(0, 12000)}
   }
 }
 
+
+async function recoverStaleJobs(env) {
+  const staleMinutes = Math.max(
+    20,
+    Math.min(120, Number(env.JOB_STALE_MINUTES || 30) || 30)
+  );
+  const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000).toISOString();
+  const query = new URLSearchParams({
+    select: "id,story_id,job_type,status,attempts,max_attempts,started_at",
+    status: "eq.processing",
+    started_at: `lt.${cutoff}`,
+    job_type: "in.(research_story,fact_check_story,write_article)",
+    order: "started_at.asc",
+    limit: "20",
+  });
+
+  const response = await sb(env, `jobs?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(
+      `Stale job watchdog fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+
+  const rows = await response.json();
+  const recovered = [];
+
+  for (const job of rows) {
+    const attempts = Number(job.attempts || 0);
+    const maxAttempts = Math.max(1, Number(job.max_attempts || 3));
+
+    if (attempts >= maxAttempts) {
+      await updateJob(env, job.id, {
+        status: "failed",
+        error_message: `Automatic watchdog stopped this job after ${attempts}/${maxAttempts} attempts. The previous Worker invocation ended before the job could finish.`,
+        finished_at: new Date().toISOString(),
+      });
+      recovered.push({
+        jobId: job.id,
+        storyId: job.story_id,
+        jobType: job.job_type,
+        action: "failed-max-attempts",
+        attempts,
+      });
+      continue;
+    }
+
+    await updateJob(env, job.id, {
+      status: "queued",
+      started_at: null,
+      finished_at: null,
+      error_message: `Recovered automatically after being stuck in processing for more than ${staleMinutes} minutes.`,
+    });
+    recovered.push({
+      jobId: job.id,
+      storyId: job.story_id,
+      jobType: job.job_type,
+      action: "requeued",
+      attempts,
+    });
+  }
+
+  return recovered;
+}
+
+async function processQueuedArticles(env, thresholds, failures) {
+  if (!thresholds.articleWriterEnabled) return [];
+  const articleJobs = await getQueuedArticleJobs(env, thresholds.maxArticles);
+  const articlesWritten = [];
+
+  for (const job of articleJobs) {
+    try {
+      articlesWritten.push(await writeArticle(env, job, thresholds));
+    } catch (e) {
+      failures.push({
+        storyId: job.story_id,
+        stage: "article-writer",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return articlesWritten;
+}
+
 async function runCycle(env) {
   const thresholds =
     await getSettings(env);
+
+  const failures = [];
+  let staleJobsRecovered = [];
+  try {
+    staleJobsRecovered = await recoverStaleJobs(env);
+  } catch (e) {
+    failures.push({
+      stage: "job-watchdog",
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // Process already-approved article jobs first so heavy discovery/research work
+  // cannot starve the writer late in the cron invocation. Newly approved stories
+  // are written on the next scheduled cycle (normally within 15 minutes).
+  const articlesWritten = await processQueuedArticles(env, thresholds, failures);
 
   const discovery =
     await runDiscovery(env);
@@ -3612,7 +3711,6 @@ async function runCycle(env) {
     );
 
   const decisions = [];
-  const failures = [];
 
   for (
     const story of stories
@@ -3726,23 +3824,6 @@ async function runCycle(env) {
     }
   }
 
-  const articleJobs = thresholds.articleWriterEnabled
-    ? await getQueuedArticleJobs(env, thresholds.maxArticles)
-    : [];
-  const articlesWritten = [];
-
-  for (const job of articleJobs) {
-    try {
-      articlesWritten.push(await writeArticle(env, job, thresholds));
-    } catch (e) {
-      failures.push({
-        storyId: job.story_id,
-        stage: "article-writer",
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-
   let qualityGateResults = [];
   try {
     qualityGateResults = await runFinalQualityGate(env, thresholds);
@@ -3766,6 +3847,8 @@ async function runCycle(env) {
   return {
     ok:
       failures.length === 0,
+
+    staleJobsRecovered,
 
     discovery,
 
@@ -3828,7 +3911,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "originality-guard-v1-publishing-safe",
+          "job-watchdog-v1-writer-first-originality-safe",
 
         model:
           env.AI_MODEL ||
