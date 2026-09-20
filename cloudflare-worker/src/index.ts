@@ -405,77 +405,64 @@ const RESEARCH_SCHEMA = {
 };
 
 
-const FACT_CHECK_SCHEMA = {
-  type: "object",
+const FACT_CHECK_STATUS_VALUES = ["supported", "partial", "conflicted", "unverified"];
 
-  properties: {
-    verdict: {
-      type: "string",
-      enum: ["approve", "hold", "reject"],
-    },
-
-    confidence: {
-      type: "number",
-      minimum: 0,
-      maximum: 100,
-    },
-
-    summary: {
-      type: "string",
-    },
-
-    claim_checks: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          claim: { type: "string" },
-          status: {
-            type: "string",
-            enum: ["supported", "partial", "conflicted", "unverified"],
-          },
-          explanation: { type: "string" },
-          source_indexes: {
-            type: "array",
-            items: { type: "number" },
-          },
-        },
-        required: ["claim", "status", "explanation", "source_indexes"],
+function claimResultSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      status: {
+        type: "string",
+        enum: FACT_CHECK_STATUS_VALUES,
+      },
+      explanation: {
+        type: "string",
+      },
+      source_indexes: {
+        type: "array",
+        items: { type: "integer", minimum: 1 },
       },
     },
+    required: ["status", "explanation", "source_indexes"],
+  };
+}
 
-    conflicts: {
-      type: "array",
-      items: { type: "string" },
+function buildFactCheckSchema(claimCount) {
+  const verificationProperties = {};
+  const verificationRequired = [];
+
+  for (let i = 0; i < claimCount; i += 1) {
+    const key = `claim_${i + 1}`;
+    verificationProperties[key] = claimResultSchema();
+    verificationRequired.push(key);
+  }
+
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: {
+        type: "string",
+      },
+      verification: {
+        type: "object",
+        additionalProperties: false,
+        properties: verificationProperties,
+        required: verificationRequired,
+      },
+      conflicts: {
+        type: "array",
+        items: { type: "string" },
+      },
     },
+    required: ["summary", "verification", "conflicts"],
+  };
+}
 
-    missing_evidence: {
-      type: "array",
-      items: { type: "string" },
-    },
-
-    safe_facts: {
-      type: "array",
-      items: { type: "string" },
-    },
-
-    writing_constraints: {
-      type: "array",
-      items: { type: "string" },
-    },
-  },
-
-  required: [
-    "verdict",
-    "confidence",
-    "summary",
-    "claim_checks",
-    "conflicts",
-    "missing_evidence",
-    "safe_facts",
-    "writing_constraints",
-  ],
-};
+function buildSingleClaimSchema() {
+  return claimResultSchema();
+}
 
 async function scoreStory(
   env,
@@ -2036,12 +2023,212 @@ async function getResearchPackage(env, storyId) {
   return rows[0] || null;
 }
 
+function buildClaimsToVerify(research, story) {
+  const candidates = [];
+
+  if (Array.isArray(research?.claims_to_verify)) {
+    candidates.push(...research.claims_to_verify);
+  }
+
+  if (Array.isArray(research?.key_facts)) {
+    candidates.push(...research.key_facts);
+  }
+
+  if (!candidates.length && story?.title) {
+    candidates.push(story.title);
+  }
+
+  const seen = new Set();
+  return candidates
+    .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    // Five central claims keeps the verification prompt small enough for the
+    // free tier while still giving the quality gate enough evidence to decide.
+    .slice(0, 5);
+}
+
+function normalizeSourceIndexes(values, evidenceCount) {
+  if (!Array.isArray(values)) return [];
+  return [
+    ...new Set(
+      values
+        .map((value) => Number(value))
+        .filter(
+          (value) =>
+            Number.isInteger(value) &&
+            value >= 1 &&
+            value <= evidenceCount
+        )
+    ),
+  ].sort((a, b) => a - b);
+}
+
+function normalizeClaimCheck(claim, rawCheck, evidenceCount, claimIndex) {
+  const sourceIndexes = normalizeSourceIndexes(
+    rawCheck?.source_indexes,
+    evidenceCount
+  );
+
+  let status = FACT_CHECK_STATUS_VALUES.includes(
+    String(rawCheck?.status || "").toLowerCase()
+  )
+    ? String(rawCheck.status).toLowerCase()
+    : "unverified";
+
+  // A model label can never override the evidence-linkage rules.
+  // Full support requires two independent sources. One source is partial.
+  if (status === "supported" && sourceIndexes.length < 2) {
+    status = sourceIndexes.length === 1 ? "partial" : "unverified";
+  }
+
+  if (status === "partial" && sourceIndexes.length === 0) {
+    status = "unverified";
+  }
+
+  if (status === "conflicted" && sourceIndexes.length === 0) {
+    status = "unverified";
+  }
+
+  const fallbackExplanation =
+    status === "unverified"
+      ? "No sufficient independent evidence was linked to this claim."
+      : "Verification result generated from the retrieved independent evidence.";
+
+  return {
+    claim_index: claimIndex + 1,
+    claim,
+    status,
+    explanation: String(rawCheck?.explanation || fallbackExplanation).slice(0, 1200),
+    source_indexes: sourceIndexes,
+  };
+}
+
+function normalizeFactCheckPackage(rawPackage, claims, evidenceCount) {
+  const verification =
+    rawPackage?.verification && typeof rawPackage.verification === "object"
+      ? rawPackage.verification
+      : {};
+
+  const missingClaimIndexes = [];
+  const claimChecks = claims.map((claim, index) => {
+    const key = `claim_${index + 1}`;
+    const rawCheck = verification[key];
+    if (!rawCheck || typeof rawCheck !== "object") {
+      missingClaimIndexes.push(index);
+    }
+    return normalizeClaimCheck(claim, rawCheck, evidenceCount, index);
+  });
+
+  const conflicts = Array.isArray(rawPackage?.conflicts)
+    ? rawPackage.conflicts.map((value) => String(value)).filter(Boolean).slice(0, 8)
+    : [];
+
+  return {
+    summary: String(rawPackage?.summary || "Fact-check completed").slice(0, 2000),
+    claim_checks: claimChecks,
+    conflicts,
+    missingClaimIndexes,
+  };
+}
+
+async function runFactCheckAI(env, claims, prompt) {
+  const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a conservative newsroom fact checker. Verify only the supplied claims against only the supplied independent evidence. Do not rewrite the claims and do not invent facts or sources.",
+      },
+      { role: "user", content: prompt },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: buildFactCheckSchema(claims.length),
+    },
+    max_tokens: 1200,
+    temperature: 0,
+  });
+
+  return parseStructured(raw);
+}
+
+async function repairSingleClaim(env, claim, evidenceText, claimNumber) {
+  const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
+    messages: [
+      {
+        role: "system",
+        content:
+          "Verify one factual claim against the supplied independent evidence. Use only source numbers present in the evidence. If support is insufficient, return unverified.",
+      },
+      {
+        role: "user",
+        content: `CLAIM ${claimNumber}: ${claim}\n\nEVIDENCE:\n${evidenceText.slice(0, 12000)}`,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: buildSingleClaimSchema(),
+    },
+    max_tokens: 350,
+    temperature: 0,
+  });
+
+  return parseStructured(raw);
+}
+
+function finalizeFactCheckPackage(basePackage, evidenceCount) {
+  const checks = Array.isArray(basePackage.claim_checks)
+    ? basePackage.claim_checks
+    : [];
+
+  // Safe facts are not accepted directly from the model. They are derived only
+  // from claims that survived our deterministic evidence-linkage rules.
+  const safeFacts = checks
+    .filter(
+      (check) =>
+        check.status === "supported" &&
+        Array.isArray(check.source_indexes) &&
+        check.source_indexes.length >= 2
+    )
+    .map((check) => check.claim);
+
+  const missingEvidence = checks
+    .filter((check) => check.status === "unverified")
+    .map((check) => `Unverified claim: ${check.claim}`);
+
+  const writingConstraints = [];
+  for (const check of checks) {
+    if (check.status === "unverified") {
+      writingConstraints.push(`Do not state as fact: ${check.claim}`);
+    }
+    if (check.status === "conflicted") {
+      writingConstraints.push(`Do not publish without resolving conflict: ${check.claim}`);
+    }
+    if (check.status === "partial") {
+      writingConstraints.push(`Qualify or omit partially supported claim: ${check.claim}`);
+    }
+  }
+
+  return {
+    summary: basePackage.summary,
+    claim_checks: checks,
+    conflicts: Array.isArray(basePackage.conflicts) ? basePackage.conflicts : [],
+    missing_evidence: missingEvidence,
+    safe_facts: safeFacts,
+    writing_constraints: writingConstraints,
+    evidence_count: evidenceCount,
+  };
+}
+
 function calculateVerificationConfidence(aiPackage, independentSourceCount) {
   const checks = Array.isArray(aiPackage.claim_checks) ? aiPackage.claim_checks : [];
   const conflicts = Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [];
-  const missingEvidence = Array.isArray(aiPackage.missing_evidence)
-    ? aiPackage.missing_evidence
-    : [];
 
   if (!checks.length) {
     return {
@@ -2054,7 +2241,7 @@ function calculateVerificationConfidence(aiPackage, independentSourceCount) {
       totalClaims: 0,
       supportRatio: 0,
       sourceFactor: Math.min(1, independentSourceCount / 3),
-      aiReportedConfidence: clampScore(aiPackage.confidence),
+      linkageRatio: 0,
     };
   }
 
@@ -2067,23 +2254,24 @@ function calculateVerificationConfidence(aiPackage, independentSourceCount) {
 
   for (const check of checks) {
     const status = String(check?.status || "unverified").toLowerCase();
+    const sourceIndexes = normalizeSourceIndexes(
+      check?.source_indexes,
+      independentSourceCount
+    );
 
     if (status === "supported") {
       supported += 1;
-      weightedSupport += 1;
+      weightedSupport += sourceIndexes.length >= 2 ? 1 : 0;
     } else if (status === "partial") {
       partial += 1;
-      weightedSupport += 0.55;
+      weightedSupport += sourceIndexes.length >= 1 ? 0.5 : 0;
     } else if (status === "conflicted") {
       conflicted += 1;
     } else {
       unverified += 1;
-      weightedSupport += 0.1;
     }
 
-    if (Array.isArray(check?.source_indexes) && check.source_indexes.length > 0) {
-      linkedClaims += 1;
-    }
+    if (sourceIndexes.length > 0) linkedClaims += 1;
   }
 
   const totalClaims = checks.length;
@@ -2091,18 +2279,15 @@ function calculateVerificationConfidence(aiPackage, independentSourceCount) {
   const sourceFactor = Math.min(1, independentSourceCount / 3);
   const linkageRatio = linkedClaims / totalClaims;
 
-  // Deterministic verification confidence:
-  // 70% evidence support, 15% publisher diversity, 15% explicit source linkage.
-  // Penalize conflicts and unresolved evidence gaps.
+  // Deterministic score only. The model no longer supplies a confidence value
+  // and therefore cannot approve a story by itself.
   let confidence =
-    supportRatio * 70 +
-    sourceFactor * 15 +
-    linkageRatio * 15;
+    supportRatio * 80 +
+    sourceFactor * 10 +
+    linkageRatio * 10;
 
-  confidence -= Math.min(30, conflicted * 15);
-  confidence -= Math.min(15, conflicts.length * 10);
-  confidence -= Math.min(12, missingEvidence.length * 3);
-
+  confidence -= Math.min(40, conflicted * 20);
+  confidence -= Math.min(20, conflicts.length * 10);
   confidence = clampScore(confidence);
 
   return {
@@ -2115,34 +2300,21 @@ function calculateVerificationConfidence(aiPackage, independentSourceCount) {
     totalClaims,
     supportRatio: Math.round(supportRatio * 100) / 100,
     sourceFactor: Math.round(sourceFactor * 100) / 100,
-    aiReportedConfidence: clampScore(aiPackage.confidence),
+    linkageRatio: Math.round(linkageRatio * 100) / 100,
   };
 }
 
 function finalFactCheckVerdict(aiPackage, independentSourceCount, settings) {
-  const aiVerdict = ["approve", "hold", "reject"].includes(aiPackage.verdict)
-    ? aiPackage.verdict
-    : "hold";
-
   const metrics = calculateVerificationConfidence(aiPackage, independentSourceCount);
   const conflicts = Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [];
+  const minimumSupportedClaims = Math.max(1, Math.ceil(metrics.totalClaims * 0.6));
 
   let verdict = "hold";
 
-  // Reject only when the AI explicitly identifies contradiction and the
-  // claim-level checks contain conflicting evidence.
-  if (aiVerdict === "reject" && (metrics.conflicted > 0 || conflicts.length > 0)) {
-    verdict = "reject";
-  }
-
-  // Approval remains intentionally strict. The AI must recommend APPROVE,
-  // the deterministic evidence score must clear the threshold, multiple
-  // independent publishers must be present, and no conflicts can remain.
   if (
-    aiVerdict === "approve" &&
     independentSourceCount >= settings.factCheckMinSources &&
     metrics.confidence >= settings.factCheckApproveConfidence &&
-    metrics.supported >= 1 &&
+    metrics.supported >= minimumSupportedClaims &&
     metrics.conflicted === 0 &&
     conflicts.length === 0
   ) {
@@ -2153,7 +2325,7 @@ function finalFactCheckVerdict(aiPackage, independentSourceCount, settings) {
     verdict,
     confidence: metrics.confidence,
     confidenceMetrics: metrics,
-    aiVerdict,
+    aiVerdict: "deterministic-v7",
   };
 }
 
@@ -2330,54 +2502,67 @@ async function factCheckStory(env, job, settings) {
       };
     }
 
+    const claimsToVerify = buildClaimsToVerify(research, story);
+    const numberedClaims = claimsToVerify
+      .map((claim, index) => `CLAIM ${index + 1}: ${claim}`)
+      .join("\n");
+
+    // Keep the verification prompt intentionally narrow. The preliminary
+    // research package is NOT supplied here because it is unverified and can
+    // bias the verifier. The model sees only the claims and independent evidence.
     const prompt = `
-Fact-check this researched technology story for Aura Digital Intelligence.
+Verify each numbered claim using ONLY the independent evidence below.
 
-Your task is claim-by-claim verification, not rewriting.
+For each claim:
+- supported = at least two independent SOURCE numbers directly support it
+- partial = only one source supports it, or the evidence supports only part of it
+- conflicted = credible sources materially disagree
+- unverified = the supplied evidence does not support it
 
-Rules:
-- Treat the original research package as claims that need verification.
-- Independent evidence is listed as SOURCE 1, SOURCE 2, etc.
-- Never claim verification from a source that does not actually support the claim.
-- If evidence is insufficient, mark the claim unverified and choose HOLD.
-- If credible sources materially contradict the central claim, choose REJECT or HOLD.
-- APPROVE only when the central claims are supported by multiple independent sources.
-- The confidence field should describe how strongly the supplied evidence supports the central factual claims, from 0 to 100.
-- Do not invent Fiji/Pacific relevance or facts.
+Use source_indexes only from the SOURCE numbers below. Do not invent sources.
 
-Original story title:
-${normalizeSearchTitle(story.title)}
+CLAIMS:
+${numberedClaims || `CLAIM 1: ${normalizeSearchTitle(story.title)}`}
 
-Original URL:
-${story.source_url}
-
-Preliminary research package:
-${JSON.stringify(research).slice(0, 9000)}
-
-Independent evidence (${evidence.length} usable sources):
-${evidenceText.slice(0, 15000)}
+INDEPENDENT EVIDENCE (${evidence.length} sources):
+${evidenceText.slice(0, 12000)}
 `;
 
-    const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a conservative newsroom fact checker. Verify only what the supplied evidence supports. Output the requested JSON schema exactly.",
-        },
-        { role: "user", content: prompt },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: FACT_CHECK_SCHEMA,
-      },
-      max_tokens: 1100,
-      temperature: 0.1,
-    });
+    const rawPackage = await runFactCheckAI(env, claimsToVerify, prompt);
+    const normalized = normalizeFactCheckPackage(
+      rawPackage,
+      claimsToVerify,
+      evidence.length
+    );
 
-    const aiPackage = parseStructured(raw);
-    aiPackage.confidence = clampScore(aiPackage.confidence);
+    let claimRepairCount = 0;
+    let claimRepairFailures = 0;
 
+    // Cloudflare documents that JSON Mode is not guaranteed to satisfy every
+    // schema in extreme cases. Instead of retrying the whole fact check, repair
+    // only any missing fixed claim slot with a tiny schema. If that also fails,
+    // the deterministic unverified placeholder remains and the story stays HOLD.
+    for (const claimIndex of normalized.missingClaimIndexes) {
+      try {
+        const repaired = await repairSingleClaim(
+          env,
+          claimsToVerify[claimIndex],
+          evidenceText,
+          claimIndex + 1
+        );
+        normalized.claim_checks[claimIndex] = normalizeClaimCheck(
+          claimsToVerify[claimIndex],
+          repaired,
+          evidence.length,
+          claimIndex
+        );
+        claimRepairCount += 1;
+      } catch {
+        claimRepairFailures += 1;
+      }
+    }
+
+    const aiPackage = finalizeFactCheckPackage(normalized, evidence.length);
     const saved = await saveFactCheck(
       env,
       story,
@@ -2391,7 +2576,10 @@ ${evidenceText.slice(0, 15000)}
       status: "completed",
       result: {
         ...saved,
-        aiVerdict: aiPackage.verdict,
+        factCheckEngine: "v7-fixed-claim-slots",
+        claimRepairCount,
+        claimRepairFailures,
+        claimCheckCount: Array.isArray(aiPackage.claim_checks) ? aiPackage.claim_checks.length : 0,
         retrievalMethods: evidence.map((item) => item.fetch_method),
         evidenceDomains: evidence.map((item) => item.domain),
         retrievalDiagnostics,
@@ -2409,8 +2597,12 @@ ${evidenceText.slice(0, 15000)}
 
     return {
       storyId: story.id,
-      title: story.title,
+      title: normalizeSearchTitle(story.title),
       ...saved,
+      factCheckEngine: "v7-fixed-claim-slots",
+      claimRepairCount,
+      claimRepairFailures,
+      claimCheckCount: Array.isArray(aiPackage.claim_checks) ? aiPackage.claim_checks.length : 0,
       retrievalMethods: evidence.map((item) => item.fetch_method),
       evidenceDomains: evidence.map((item) => item.domain),
       candidateCount: retrievalDiagnostics.candidateCount,
@@ -2610,7 +2802,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "fact-check-v5-deterministic-confidence",
+          "fact-check-v7-fixed-claim-verification",
 
         model:
           env.AI_MODEL ||
@@ -2675,7 +2867,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "fact-check-v5-deterministic-confidence",
+        "fact-check-v7-fixed-claim-verification",
 
       endpoints: [
         "GET /health",

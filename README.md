@@ -141,3 +141,11 @@ Browser Run is now used as a final fallback for JavaScript-mediated Google News 
 ## Fact Check v5 - deterministic confidence
 
 The fact-check gate now calculates verification confidence from claim-level evidence rather than trusting the language model's self-reported confidence. Retrieval still requires independent publishers and approval remains conservative. See `FACT_CHECK_V5_SETUP.md`.
+
+## Fact Check v6
+
+v6 enforces claim-by-claim verification. It explicitly numbers research claims, requires non-empty claim checks, retries once if the structured model returns an empty claim-check array, and fails closed to HOLD if claim-level verification is still unavailable. Deterministic confidence continues to require independent evidence and now gives full support weight only to supported claims linked to at least two independent sources.
+
+## Fact Check v7 — fixed claim verification
+
+v7 is the core reliability fix. The worker no longer depends on the model producing a non-empty `claim_checks` array. Application code defines up to five fixed claim slots, validates all source indexes, repairs only missing claim slots, derives `safe_facts` from fully corroborated claims, and calculates the final confidence/verdict deterministically. The verification prompt now contains only claims plus independent evidence, not the unverified research narrative. See `FACT_CHECK_V7_FINAL_FIX.md` and `CORE_PROBLEM_REPORT.md`.
