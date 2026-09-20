@@ -133,3 +133,7 @@ Run `supabase/migrations/003_fact_check_verification.sql` before deploying the l
 ## Fact-check retrieval v2
 
 Independent-source verification now uses stronger GDELT multi-query discovery, publisher-domain resolution and a Jina Reader fallback for pages that cannot be cleanly fetched with plain HTTP. The verifier still requires at least two independent usable sources and the configured confidence threshold before APPROVE. See `FACT_CHECK_V2_SETUP.md`.
+
+## Fact Check Retrieval v3
+
+Browser Run is now used as a final fallback for JavaScript-mediated Google News URLs and publisher pages that ordinary fetch/Jina cannot read. The fact-check approval gate remains unchanged: multiple independent sources and the configured confidence threshold are still required.

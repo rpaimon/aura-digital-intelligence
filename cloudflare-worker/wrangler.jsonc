@@ -4,7 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "triggers": {
-    "crons": ["*/15 * * * *"]
+    "crons": [
+      "*/15 * * * *"
+    ]
   },
   "ai": {
     "binding": "AI"
@@ -14,5 +16,8 @@
     "MAX_RESEARCH_PER_RUN": "1",
     "MAX_FACT_CHECKS_PER_RUN": "1",
     "AI_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  },
+  "browser": {
+    "binding": "BROWSER"
   }
 }

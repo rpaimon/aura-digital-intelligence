@@ -1507,6 +1507,179 @@ async function resolvePublisherCandidateWithGdelt(storyTitle, candidate) {
   };
 }
 
+function browserRunAvailable(env) {
+  return Boolean(env?.BROWSER && typeof env.BROWSER.quickAction === "function");
+}
+
+async function parseBrowserQuickAction(response) {
+  if (!response) return null;
+
+  try {
+    const text = await response.text();
+    if (!response.ok) {
+      console.log(
+        "Browser Run Quick Action failed:",
+        response.status,
+        text.slice(0, 500)
+      );
+      return null;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {
+        success: true,
+        result: text,
+      };
+    }
+  } catch (error) {
+    console.log(
+      "Browser Run Quick Action parse failed:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return null;
+  }
+}
+
+function usablePublisherLink(url) {
+  const domain = hostnameOf(url);
+  if (!domain) return false;
+
+  const blocked = [
+    "news.google.com",
+    "google.com",
+    "accounts.google.com",
+    "support.google.com",
+    "gstatic.com",
+    "googleusercontent.com",
+    "youtube.com",
+    "youtu.be",
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "x.com",
+    "twitter.com",
+  ];
+
+  if (blocked.some((item) => domain === item || domain.endsWith(`.${item}`))) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+async function browserResolveGoogleNewsUrl(env, candidate) {
+  if (!candidate?.url || hostnameOf(candidate.url) !== "news.google.com") {
+    return candidate;
+  }
+
+  if (!browserRunAvailable(env)) {
+    return candidate;
+  }
+
+  try {
+    const response = await env.BROWSER.quickAction("links", {
+      url: candidate.url,
+      visibleLinksOnly: false,
+      gotoOptions: {
+        waitUntil: "networkidle2",
+      },
+    });
+
+    const payload = await parseBrowserQuickAction(response);
+    const links = Array.isArray(payload?.result)
+      ? payload.result.filter((value) => typeof value === "string")
+      : [];
+
+    if (!links.length) return candidate;
+
+    const preferredDomain = String(candidate.domain || "").toLowerCase();
+    const usable = [...new Set(links.filter(usablePublisherLink))];
+
+    let best = null;
+
+    if (preferredDomain && preferredDomain !== "news.google.com") {
+      best = usable.find((url) => {
+        const domain = hostnameOf(url);
+        return (
+          domain === preferredDomain ||
+          domain.endsWith(`.${preferredDomain}`) ||
+          preferredDomain.endsWith(`.${domain}`)
+        );
+      });
+    }
+
+    if (!best) {
+      const tokens = significantTitleTokens(candidate.title || "").slice(0, 5);
+
+      best = usable
+        .map((url) => {
+          const path = (() => {
+            try {
+              return decodeURIComponent(new URL(url).pathname).toLowerCase();
+            } catch {
+              return "";
+            }
+          })();
+
+          const score = tokens.filter((token) => path.includes(token)).length;
+          return { url, score, pathLength: path.length };
+        })
+        .filter((item) => item.pathLength > 5)
+        .sort((a, b) => b.score - a.score || b.pathLength - a.pathLength)[0]?.url;
+    }
+
+    if (!best) return candidate;
+
+    return {
+      ...candidate,
+      url: best,
+      domain: hostnameOf(best),
+      discovery: "google-news-browser-resolved",
+    };
+  } catch (error) {
+    console.log(
+      "Browser Run Google News resolution failed:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return candidate;
+  }
+}
+
+async function fetchBrowserMarkdown(env, url) {
+  if (!url || !browserRunAvailable(env)) return "";
+
+  try {
+    const response = await env.BROWSER.quickAction("markdown", {
+      url,
+      gotoOptions: {
+        waitUntil: "networkidle2",
+      },
+    });
+
+    const payload = await parseBrowserQuickAction(response);
+    const markdown = typeof payload?.result === "string" ? payload.result : "";
+
+    return markdown
+      .replace(/\r/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, 12000);
+  } catch (error) {
+    console.log(
+      "Browser Run markdown fetch failed:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return "";
+  }
+}
+
 async function fetchJinaReaderText(url) {
   if (!url) return "";
 
@@ -1533,30 +1706,65 @@ async function fetchJinaReaderText(url) {
   }
 }
 
-async function fetchEvidenceText(candidate, story) {
-  const isGoogleNews = hostnameOf(candidate.url) === "news.google.com";
+async function fetchEvidenceText(env, candidate, story) {
+  let resolvedCandidate = candidate;
+
+  if (hostnameOf(resolvedCandidate.url) === "news.google.com") {
+    resolvedCandidate = await browserResolveGoogleNewsUrl(env, resolvedCandidate);
+  }
+
+  const isGoogleNews = hostnameOf(resolvedCandidate.url) === "news.google.com";
 
   if (!isGoogleNews) {
-    const direct = await fetchSourceText(candidate.url);
+    const direct = await fetchSourceText(resolvedCandidate.url);
     if (
       direct &&
       direct.length >= 350 &&
-      evidenceMatchesStory(direct, story.title, candidate.title)
+      evidenceMatchesStory(direct, story.title, resolvedCandidate.title)
     ) {
-      return { text: direct, fetch_method: "direct" };
+      return {
+        text: direct,
+        fetch_method: "direct",
+        candidate: resolvedCandidate,
+      };
     }
   }
 
-  const reader = await fetchJinaReaderText(candidate.url);
-  if (
-    reader &&
-    reader.length >= 350 &&
-    evidenceMatchesStory(reader, story.title, candidate.title)
-  ) {
-    return { text: reader, fetch_method: "jina-reader" };
+  if (!isGoogleNews) {
+    const reader = await fetchJinaReaderText(resolvedCandidate.url);
+    if (
+      reader &&
+      reader.length >= 350 &&
+      evidenceMatchesStory(reader, story.title, resolvedCandidate.title)
+    ) {
+      return {
+        text: reader,
+        fetch_method: "jina-reader",
+        candidate: resolvedCandidate,
+      };
+    }
   }
 
-  return { text: "", fetch_method: "none" };
+  if (!isGoogleNews) {
+    const browserText = await fetchBrowserMarkdown(env, resolvedCandidate.url);
+    if (
+      browserText &&
+      browserText.length >= 350 &&
+      evidenceMatchesStory(browserText, story.title, resolvedCandidate.title)
+    ) {
+      return {
+        text: browserText,
+        fetch_method: "browser-run-markdown",
+        candidate: resolvedCandidate,
+      };
+    }
+  }
+
+  return {
+    text: "",
+    fetch_method: "none",
+    candidate: resolvedCandidate,
+  };
 }
 
 async function discoverVerificationSources(story) {
@@ -1609,26 +1817,38 @@ async function discoverVerificationSources(story) {
   return unique;
 }
 
-async function collectIndependentEvidence(story) {
+async function collectIndependentEvidence(env, story) {
   const candidates = await discoverVerificationSources(story);
   const evidence = [];
+  const acceptedDomains = new Set();
 
   for (const candidate of candidates) {
     if (evidence.length >= 3) break;
 
-    const fetched = await fetchEvidenceText(candidate, story);
+    const fetched = await fetchEvidenceText(env, candidate, story);
     if (!fetched.text) continue;
+
+    const finalCandidate = fetched.candidate || candidate;
+    const finalDomain = finalCandidate.domain || hostnameOf(finalCandidate.url);
+
+    if (!finalDomain) continue;
+    if (samePublisherDomain(finalCandidate.url, story.source_url)) continue;
+    if (acceptedDomains.has(finalDomain)) continue;
+
+    acceptedDomains.add(finalDomain);
 
     evidence.push({
       index: evidence.length + 1,
-      title: candidate.title,
-      url: candidate.url,
-      source_name: candidate.source_name,
-      domain: candidate.domain,
-      published_at: candidate.published_at,
-      discovery: candidate.discovery,
+      title: finalCandidate.title,
+      url: finalCandidate.url,
+      source_name: finalCandidate.source_name,
+      domain: finalDomain,
+      published_at: finalCandidate.published_at,
+      discovery: finalCandidate.discovery,
       fetch_method: fetched.fetch_method,
-      similarity: candidate.similarity ?? Math.round(titleSimilarity(story.title, candidate.title) * 100),
+      similarity:
+        finalCandidate.similarity ??
+        Math.round(titleSimilarity(story.title, finalCandidate.title) * 100),
       excerpt: fetched.text.slice(0, 5000),
     });
   }
@@ -1816,7 +2036,7 @@ async function factCheckStory(env, job, settings) {
       throw new Error("No completed research package found for this story");
     }
 
-    const evidence = await collectIndependentEvidence(story);
+    const evidence = await collectIndependentEvidence(env, story);
     const research =
       researchPackage.key_facts && typeof researchPackage.key_facts === "object"
         ? researchPackage.key_facts
@@ -1829,6 +2049,65 @@ async function factCheckStory(env, job, settings) {
           )
           .join("\n\n---\n\n")
       : "No usable independent source text could be retrieved.";
+
+    // Save free Workers AI quota: if we still do not have the minimum number
+    // of independent publishers, HOLD deterministically instead of asking AI
+    // to verify claims from insufficient evidence.
+    if (evidence.length < settings.factCheckMinSources) {
+      const insufficientPackage = {
+        verdict: "hold",
+        confidence: evidence.length === 0 ? 0 : 30,
+        summary:
+          evidence.length === 0
+            ? "Fact check held because no usable independent publisher evidence could be retrieved."
+            : `Fact check held because only ${evidence.length} independent publisher source was retrievable; ${settings.factCheckMinSources} are required.`,
+        claim_checks: [],
+        conflicts: [],
+        missing_evidence: [
+          `At least ${settings.factCheckMinSources} independent publisher sources are required before approval.`,
+        ],
+        safe_facts: [],
+        writing_constraints: [
+          "Do not publish automatically until the minimum independent-source requirement is met.",
+        ],
+      };
+
+      const saved = await saveFactCheck(
+        env,
+        story,
+        researchPackage,
+        evidence,
+        insufficientPackage,
+        settings
+      );
+
+      await updateJob(env, job.id, {
+        status: "completed",
+        result: {
+          ...saved,
+          aiVerdict: "not-run-insufficient-sources",
+          retrievalMethods: evidence.map((item) => item.fetch_method),
+          evidenceDomains: evidence.map((item) => item.domain),
+          sourceDiscovery: evidence.map((item) => ({
+            title: item.title,
+            url: item.url,
+            source_name: item.source_name,
+            domain: item.domain,
+            discovery: item.discovery,
+            fetch_method: item.fetch_method,
+          })),
+        },
+        finished_at: new Date().toISOString(),
+      });
+
+      return {
+        storyId: story.id,
+        title: story.title,
+        ...saved,
+        retrievalMethods: evidence.map((item) => item.fetch_method),
+        evidenceDomains: evidence.map((item) => item.domain),
+      };
+    }
 
     const prompt = `
 Fact-check this researched technology story for Aura Digital Intelligence.
@@ -1891,11 +2170,15 @@ ${evidenceText.slice(0, 15000)}
       result: {
         ...saved,
         aiVerdict: aiPackage.verdict,
+        retrievalMethods: evidence.map((item) => item.fetch_method),
+        evidenceDomains: evidence.map((item) => item.domain),
         sourceDiscovery: evidence.map((item) => ({
           title: item.title,
           url: item.url,
           source_name: item.source_name,
           domain: item.domain,
+          discovery: item.discovery,
+          fetch_method: item.fetch_method,
         })),
       },
       finished_at: new Date().toISOString(),
@@ -1905,6 +2188,8 @@ ${evidenceText.slice(0, 15000)}
       storyId: story.id,
       title: story.title,
       ...saved,
+      retrievalMethods: evidence.map((item) => item.fetch_method),
+      evidenceDomains: evidence.map((item) => item.domain),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2099,7 +2384,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "fact-check-retrieval-v2-json-mode",
+          "fact-check-retrieval-v3-browser-run-json-mode",
 
         model:
           env.AI_MODEL ||
@@ -2164,7 +2449,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "fact-check-retrieval-v2-json-mode",
+        "fact-check-retrieval-v3-browser-run-json-mode",
 
       endpoints: [
         "GET /health",
