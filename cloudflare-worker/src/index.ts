@@ -4,6 +4,8 @@ const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const DEFAULT_BATCH = 6;
 const DEFAULT_RESEARCH_BATCH = 1;
 const DEFAULT_FACT_CHECK_BATCH = 1;
+const DEFAULT_ARTICLE_BATCH = 1;
+const DEFAULT_HOLD_RETRY_BATCH = 1;
 
 function clampScore(value) {
   const n = Number(value);
@@ -59,7 +61,7 @@ async function runDiscovery(env) {
 async function getSettings(env) {
   const r = await sb(
     env,
-    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence)"
+    "settings?select=key,value&key=in.(watch_priority_threshold,research_priority_threshold,max_research_per_run,max_fact_checks_per_run,fact_check_min_sources,fact_check_approve_confidence,max_articles_per_run,max_articles_per_day,article_writer_enabled,article_min_fact_confidence,fact_check_hold_retry_enabled,fact_check_hold_retry_max,fact_check_hold_retry_minutes)"
   );
 
   if (!r.ok) {
@@ -70,6 +72,13 @@ async function getSettings(env) {
       maxFactChecks: DEFAULT_FACT_CHECK_BATCH,
       factCheckMinSources: 2,
       factCheckApproveConfidence: 75,
+      maxArticles: DEFAULT_ARTICLE_BATCH,
+      maxArticlesPerDay: 8,
+      articleWriterEnabled: true,
+      articleMinFactConfidence: 75,
+      holdRetryEnabled: true,
+      holdRetryMax: 4,
+      holdRetryMinutes: 360,
     };
   }
 
@@ -127,6 +136,25 @@ async function getSettings(env) {
         Number(map.fact_check_approve_confidence ?? 75) || 75
       )
     ),
+    maxArticles: Math.max(
+      1,
+      Math.min(
+        2,
+        Number(env.MAX_ARTICLES_PER_RUN ?? map.max_articles_per_run ?? DEFAULT_ARTICLE_BATCH) || DEFAULT_ARTICLE_BATCH
+      )
+    ),
+    maxArticlesPerDay: Math.max(
+      1,
+      Math.min(20, Number(map.max_articles_per_day ?? 8) || 8)
+    ),
+    articleWriterEnabled: map.article_writer_enabled !== false,
+    articleMinFactConfidence: Math.max(
+      60,
+      Math.min(95, Number(map.article_min_fact_confidence ?? 75) || 75)
+    ),
+    holdRetryEnabled: map.fact_check_hold_retry_enabled !== false,
+    holdRetryMax: Math.max(0, Math.min(6, Number(map.fact_check_hold_retry_max ?? 4) || 4)),
+    holdRetryMinutes: Math.max(60, Math.min(2880, Number(map.fact_check_hold_retry_minutes ?? 360) || 360)),
   };
 }
 
@@ -401,6 +429,32 @@ const RESEARCH_SCHEMA = {
     "claims_to_verify",
     "confidence",
     "recommended_angle",
+  ],
+};
+
+
+const ARTICLE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    title: { type: "string" },
+    subtitle: { type: "string" },
+    excerpt: { type: "string" },
+    content: { type: "string" },
+    category: { type: "string" },
+    seo_title: { type: "string" },
+    seo_description: { type: "string" },
+    keywords: { type: "string" },
+  },
+  required: [
+    "title",
+    "subtitle",
+    "excerpt",
+    "content",
+    "category",
+    "seo_title",
+    "seo_description",
+    "keywords",
   ],
 };
 
@@ -968,6 +1022,461 @@ async function updateJob(
       )}`
     );
   }
+}
+
+
+function slugify(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72) || `story-${Date.now()}`;
+}
+
+function asStringArray(value) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
+async function enqueueArticleJob(env, storyId, priority = 70) {
+  const existing = await sb(
+    env,
+    `jobs?select=id&job_type=eq.write_article&story_id=eq.${encodeURIComponent(storyId)}&status=in.(queued,processing,completed)&limit=1`
+  );
+
+  if (existing.ok && (await existing.json()).length) return false;
+
+  const articleExisting = await sb(
+    env,
+    `articles?select=id&story_id=eq.${encodeURIComponent(storyId)}&limit=1`
+  );
+  if (articleExisting.ok && (await articleExisting.json()).length) return false;
+
+  const response = await sb(env, "jobs", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      job_type: "write_article",
+      status: "queued",
+      priority: Math.max(1, Math.min(100, Math.round(Number(priority) || 70))),
+      story_id: storyId,
+      payload: { reason: "fact check approved" },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Article queue insert failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+  return true;
+}
+
+async function countArticlesGeneratedToday(env) {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const response = await sb(
+    env,
+    `articles?select=id&generated_at=gte.${encodeURIComponent(start.toISOString())}&limit=100`
+  );
+  if (!response.ok) return 0;
+  const rows = await response.json();
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+async function getQueuedArticleJobs(env, limit) {
+  const query = new URLSearchParams({
+    select:
+      "id,story_id,priority,attempts,max_attempts,stories(id,source_url,title,description,category,published_at,priority_score,verification_status,verification_confidence)",
+    job_type: "eq.write_article",
+    status: "eq.queued",
+    order: "priority.desc,created_at.asc",
+    limit: String(limit),
+  });
+
+  const response = await sb(env, `jobs?${query.toString()}`);
+  if (!response.ok) {
+    throw new Error(
+      `Article queue fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+  return response.json();
+}
+
+async function getApprovedFactCheck(env, storyId) {
+  const response = await sb(
+    env,
+    `fact_checks?select=id,verdict,confidence,independent_source_count,summary,claim_checks,evidence_sources,conflicts,missing_evidence,safe_facts,writing_constraints&story_id=eq.${encodeURIComponent(storyId)}&limit=1`
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Approved fact-check fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`
+    );
+  }
+  const rows = await response.json();
+  return rows[0] || null;
+}
+
+async function getDefaultAuthorId(env) {
+  const response = await sb(
+    env,
+    "authors?select=id&slug=eq.aura-digital-intelligence&limit=1"
+  );
+  if (!response.ok) return null;
+  const rows = await response.json();
+  return rows[0]?.id || null;
+}
+
+function articleQualityScore(article, factCheck) {
+  const safeFacts = asStringArray(factCheck?.safe_facts);
+  const sourceCount = Number(factCheck?.independent_source_count || 0);
+  const confidence = Number(factCheck?.confidence || 0);
+  const words = String(article.content || "").trim().split(/\s+/).filter(Boolean).length;
+  let score = 0;
+
+  if (factCheck?.verdict === "approve") score += 30;
+  score += Math.min(20, Math.round(confidence * 0.2));
+  if (sourceCount >= 2) score += 10;
+  if (safeFacts.length >= 2) score += 10;
+  else if (safeFacts.length === 1) score += 5;
+  if (String(article.title || "").length >= 25 && String(article.title || "").length <= 85) score += 5;
+  if (String(article.seo_title || "").length > 0 && String(article.seo_title || "").length <= 65) score += 5;
+  const seoLen = String(article.seo_description || "").length;
+  if (seoLen >= 110 && seoLen <= 170) score += 5;
+  if (words >= 350 && words <= 1000) score += 10;
+  if (/##\s+Sources/i.test(String(article.content || ""))) score += 5;
+
+  return { score: Math.min(100, score), wordCount: words };
+}
+
+function appendDeterministicSources(content, evidenceSources) {
+  const sources = Array.isArray(evidenceSources) ? evidenceSources : [];
+  const lines = sources
+    .filter((source) => source && typeof source === "object" && source.url)
+    .slice(0, 5)
+    .map((source, index) => {
+      const name = String(source.source_name || source.domain || `Source ${index + 1}`).replace(/\s+/g, " ").trim();
+      const title = String(source.title || "Independent coverage").replace(/\s+/g, " ").trim();
+      return `${index + 1}. [${name} — ${title}](${source.url})`;
+    });
+
+  if (!lines.length) return String(content || "").trim();
+  const base = String(content || "").replace(/\n##\s+Sources[\s\S]*$/i, "").trim();
+  return `${base}\n\n## Sources\n${lines.join("\n")}`;
+}
+
+async function writeArticle(env, job, settings) {
+  const story = job.stories;
+  const currentAttempt = Number(job.attempts || 0) + 1;
+  const maxAttempts = Math.max(1, Number(job.max_attempts || 3));
+  await updateJob(env, job.id, {
+    status: "processing",
+    attempts: currentAttempt,
+    started_at: new Date().toISOString(),
+    error_message: null,
+  });
+
+  try {
+    const factCheck = await getApprovedFactCheck(env, story.id);
+    if (!factCheck) throw new Error("No fact check found for article writer");
+    if (factCheck.verdict !== "approve") {
+      throw new Error(`Article writer blocked: fact-check verdict is ${factCheck.verdict}`);
+    }
+    if (Number(factCheck.confidence || 0) < settings.articleMinFactConfidence) {
+      throw new Error(
+        `Article writer blocked: fact-check confidence ${factCheck.confidence} is below ${settings.articleMinFactConfidence}`
+      );
+    }
+    const conflicts = asStringArray(factCheck.conflicts);
+    if (conflicts.length) throw new Error("Article writer blocked: unresolved fact-check conflicts exist");
+
+    const safeFacts = asStringArray(factCheck.safe_facts);
+    if (!safeFacts.length) throw new Error("Article writer blocked: no verified safe facts available");
+    const constraints = asStringArray(factCheck.writing_constraints);
+    const evidenceSources = Array.isArray(factCheck.evidence_sources) ? factCheck.evidence_sources : [];
+    const sourceList = evidenceSources
+      .slice(0, 5)
+      .map((source, index) => `SOURCE ${index + 1}: ${source.source_name || source.domain || "Publisher"} — ${source.title || "Coverage"} — ${source.url || ""}`)
+      .join("\n");
+
+    const prompt = `
+Write an original Aura Digital Intelligence technology article for business readers in Fiji and the Pacific.
+
+NON-NEGOTIABLE FACT RULES:
+- The SAFE FACTS below are the only factual claims you may state as established fact.
+- Do not add dates, numbers, names, quotes, causes, technical details, impacts or background facts unless they appear in SAFE FACTS.
+- You may explain why the verified facts could matter to businesses, but clearly frame interpretation as analysis, not as additional fact.
+- Never claim a Fiji/Pacific impact unless it follows logically from the safe facts; do not invent local relevance.
+- Do not copy source wording. Synthesize in original language.
+- Do not include a Sources section; application code adds the verified source list automatically.
+- Aim for 450-750 words. If the safe facts are too limited, write a shorter, tighter article rather than padding with unsupported material.
+- Use Markdown headings. Keep the tone clear, professional and useful, not sensational.
+
+ORIGINAL STORY TITLE:
+${story.title}
+
+CATEGORY:
+${story.category || "Technology"}
+
+VERIFIED SAFE FACTS:
+${safeFacts.map((fact, index) => `${index + 1}. ${fact}`).join("\n")}
+
+WRITING CONSTRAINTS:
+${constraints.length ? constraints.map((item) => `- ${item}`).join("\n") : "- None beyond the safe-fact rule."}
+
+INDEPENDENT SOURCE LABELS FOR CONTEXT ONLY:
+${sourceList || "No source labels supplied"}
+
+Return a useful headline, subtitle, short excerpt, Markdown article body, category, SEO title, SEO description, and comma-separated keywords.
+`;
+
+    const raw = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a conservative newsroom writer. Factual accuracy is more important than length. Use only verified safe facts as factual claims and never invent details.",
+        },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_schema", json_schema: ARTICLE_SCHEMA },
+      max_tokens: 2200,
+      temperature: 0.2,
+    });
+
+    const generated = parseStructured(raw);
+    const title = String(generated.title || story.title).replace(/\s+/g, " ").trim().slice(0, 180);
+    const slugBase = slugify(title);
+    const slug = `${slugBase}-${String(story.id).slice(0, 8)}`;
+    const content = appendDeterministicSources(generated.content, evidenceSources);
+    const normalizedArticle = {
+      title,
+      subtitle: String(generated.subtitle || "").trim().slice(0, 260),
+      excerpt: String(generated.excerpt || "").trim().slice(0, 500),
+      content,
+      category: String(generated.category || story.category || "Technology").trim().slice(0, 100),
+      seo_title: String(generated.seo_title || title).replace(/\s+/g, " ").trim().slice(0, 70),
+      seo_description: String(generated.seo_description || generated.excerpt || "").replace(/\s+/g, " ").trim().slice(0, 180),
+      keywords: String(generated.keywords || "").replace(/\s+/g, " ").trim().slice(0, 500),
+    };
+
+    const quality = articleQualityScore(normalizedArticle, factCheck);
+    const authorId = await getDefaultAuthorId(env);
+    const status = quality.score >= 85 ? "review" : "draft";
+    const now = new Date().toISOString();
+    const articlePayload = {
+      story_id: story.id,
+      author_id: authorId,
+      slug,
+      title: normalizedArticle.title,
+      subtitle: normalizedArticle.subtitle || null,
+      excerpt: normalizedArticle.excerpt || null,
+      content: normalizedArticle.content,
+      category: normalizedArticle.category,
+      seo_title: normalizedArticle.seo_title || normalizedArticle.title,
+      seo_description: normalizedArticle.seo_description || normalizedArticle.excerpt || null,
+      status,
+      quality_score: quality.score,
+      quality_notes: {
+        fact_check_confidence: Number(factCheck.confidence || 0),
+        independent_source_count: Number(factCheck.independent_source_count || 0),
+        safe_fact_count: safeFacts.length,
+        word_count: quality.wordCount,
+        writer: "verified-safe-facts-v1",
+      },
+      seo_keywords: normalizedArticle.keywords
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 12),
+      fact_check_id: factCheck.id,
+      generation_model: env.AI_MODEL || DEFAULT_MODEL,
+      generated_at: now,
+      updated_at: now,
+    };
+
+    const existingArticleResponse = await sb(
+      env,
+      `articles?select=id&story_id=eq.${encodeURIComponent(story.id)}&limit=1`
+    );
+    const existingArticleRows = existingArticleResponse.ok
+      ? await existingArticleResponse.json()
+      : [];
+    const save = existingArticleRows.length
+      ? await sb(env, `articles?id=eq.${encodeURIComponent(existingArticleRows[0].id)}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(articlePayload),
+        })
+      : await sb(env, "articles", {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(articlePayload),
+        });
+    if (!save.ok) {
+      throw new Error(
+        `Article save failed (${save.status}): ${(await save.text()).slice(0, 400)}`
+      );
+    }
+    const savedRows = await save.json();
+    const article = savedRows[0];
+
+    if (article?.id && evidenceSources.length) {
+      await sb(env, `article_sources?article_id=eq.${encodeURIComponent(article.id)}`, {
+        method: "DELETE",
+        headers: { Prefer: "return=minimal" },
+      });
+      const sourceRows = evidenceSources
+        .filter((source) => source?.url)
+        .slice(0, 8)
+        .map((source) => ({
+          article_id: article.id,
+          source_url: source.url,
+          source_name: String(source.source_name || source.domain || "Independent source").slice(0, 180),
+          source_type: "fact-check-evidence",
+          citation_text: String(source.title || "Independent coverage").slice(0, 300),
+        }));
+      if (sourceRows.length) {
+        const sourcesSave = await sb(env, "article_sources", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(sourceRows),
+        });
+        if (!sourcesSave.ok) {
+          throw new Error(
+            `Article source save failed (${sourcesSave.status}): ${(await sourcesSave.text()).slice(0, 300)}`
+          );
+        }
+      }
+    }
+
+    await sb(env, `stories?id=eq.${encodeURIComponent(story.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ status: "draft" }),
+    });
+
+    await updateJob(env, job.id, {
+      status: "completed",
+      article_id: article?.id || null,
+      result: {
+        articleId: article?.id || null,
+        slug,
+        status,
+        qualityScore: quality.score,
+        wordCount: quality.wordCount,
+        safeFactCount: safeFacts.length,
+        sourceCount: Number(factCheck.independent_source_count || 0),
+      },
+      finished_at: now,
+    });
+
+    return {
+      storyId: story.id,
+      articleId: article?.id || null,
+      title: normalizedArticle.title,
+      slug,
+      status,
+      qualityScore: quality.score,
+      wordCount: quality.wordCount,
+      safeFactCount: safeFacts.length,
+      independentSourceCount: Number(factCheck.independent_source_count || 0),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      await updateJob(env, job.id, {
+        status: currentAttempt < maxAttempts ? "queued" : "failed",
+        attempts: currentAttempt,
+        error_message: message,
+        started_at: null,
+        finished_at: currentAttempt < maxAttempts ? null : new Date().toISOString(),
+      });
+    } catch {}
+    throw error;
+  }
+}
+
+function holdRetryDelayMinutes(retryCount, baseMinutes) {
+  return Math.min(2880, Math.max(60, baseMinutes) * Math.pow(2, Math.max(0, retryCount)));
+}
+
+async function scheduleHoldRetry(env, storyId, settings) {
+  if (!settings.holdRetryEnabled || settings.holdRetryMax <= 0) return;
+  const response = await sb(
+    env,
+    `fact_checks?select=id,retry_count&story_id=eq.${encodeURIComponent(storyId)}&limit=1`
+  );
+  if (!response.ok) return;
+  const rows = await response.json();
+  const row = rows[0];
+  if (!row) return;
+  const retryCount = Number(row.retry_count || 0);
+  if (retryCount >= settings.holdRetryMax) return;
+  const delay = holdRetryDelayMinutes(retryCount, settings.holdRetryMinutes);
+  const next = new Date(Date.now() + delay * 60 * 1000).toISOString();
+  await sb(env, `fact_checks?id=eq.${encodeURIComponent(row.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ next_retry_at: next }),
+  });
+}
+
+async function clearHoldRetry(env, storyId) {
+  await sb(env, `fact_checks?story_id=eq.${encodeURIComponent(storyId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ next_retry_at: null }),
+  });
+}
+
+async function queueDueHoldRetries(env, settings) {
+  if (!settings.holdRetryEnabled || settings.holdRetryMax <= 0) return [];
+  const now = new Date().toISOString();
+  const response = await sb(
+    env,
+    `fact_checks?select=id,story_id,retry_count,confidence&verdict=eq.hold&next_retry_at=lte.${encodeURIComponent(now)}&retry_count=lt.${settings.holdRetryMax}&order=next_retry_at.asc&limit=${DEFAULT_HOLD_RETRY_BATCH}`
+  );
+  if (!response.ok) return [];
+  const rows = await response.json();
+  const queued = [];
+
+  for (const row of rows) {
+    const active = await sb(
+      env,
+      `jobs?select=id&job_type=eq.fact_check_story&story_id=eq.${encodeURIComponent(row.story_id)}&status=in.(queued,processing)&limit=1`
+    );
+    if (active.ok && (await active.json()).length) continue;
+
+    const insert = await sb(env, "jobs", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        job_type: "fact_check_story",
+        status: "queued",
+        priority: 75,
+        story_id: row.story_id,
+        payload: { reason: "automatic hold retry", retry_number: Number(row.retry_count || 0) + 1 },
+      }),
+    });
+    if (!insert.ok) continue;
+
+    const nextRetryCount = Number(row.retry_count || 0) + 1;
+    await sb(env, `fact_checks?id=eq.${encodeURIComponent(row.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        retry_count: nextRetryCount,
+        last_retry_at: now,
+        next_retry_at: null,
+      }),
+    });
+    queued.push({ storyId: row.story_id, retryCount: nextRetryCount });
+  }
+  return queued;
 }
 
 async function researchStory(
@@ -2398,6 +2907,17 @@ async function saveFactCheck(env, story, researchPackage, evidence, aiPackage, s
     );
   }
 
+  if (final.verdict === "approve") {
+    await clearHoldRetry(env, story.id);
+    if (settings.articleWriterEnabled && final.confidence >= settings.articleMinFactConfidence) {
+      await enqueueArticleJob(env, story.id, story.priority_score ?? 75);
+    }
+  } else if (final.verdict === "hold") {
+    await scheduleHoldRetry(env, story.id, settings);
+  } else {
+    await clearHoldRetry(env, story.id);
+  }
+
   return {
     verdict: final.verdict,
     confidence: final.confidence,
@@ -2631,6 +3151,8 @@ async function runCycle(env) {
   const discovery =
     await runDiscovery(env);
 
+  const holdRetriesQueued = await queueDueHoldRetries(env, thresholds);
+
   const stories =
     await getUnscoredStories(
       env
@@ -2751,6 +3273,33 @@ async function runCycle(env) {
     }
   }
 
+  const articlesGeneratedToday = thresholds.articleWriterEnabled
+    ? await countArticlesGeneratedToday(env)
+    : 0;
+  const remainingDailyArticleCapacity = Math.max(
+    0,
+    thresholds.maxArticlesPerDay - articlesGeneratedToday
+  );
+  const articleJobs = thresholds.articleWriterEnabled && remainingDailyArticleCapacity > 0
+    ? await getQueuedArticleJobs(
+        env,
+        Math.min(thresholds.maxArticles, remainingDailyArticleCapacity)
+      )
+    : [];
+  const articlesWritten = [];
+
+  for (const job of articleJobs) {
+    try {
+      articlesWritten.push(await writeArticle(env, job, thresholds));
+    } catch (e) {
+      failures.push({
+        storyId: job.story_id,
+        stage: "article-writer",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   return {
     ok:
       failures.length === 0,
@@ -2771,6 +3320,16 @@ async function runCycle(env) {
       factChecked.length,
 
     factChecked,
+
+    holdRetriesQueued,
+
+    articlesProcessed: articlesWritten.length,
+
+    articlesWritten,
+
+    articlesGeneratedToday,
+
+    remainingDailyArticleCapacity: Math.max(0, remainingDailyArticleCapacity - articlesWritten.length),
 
     failedCount:
       failures.length,
@@ -2802,7 +3361,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "fact-check-v7-fixed-claim-verification",
+          "article-writer-v1-safe-facts-hold-retry",
 
         model:
           env.AI_MODEL ||
@@ -2867,7 +3426,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "fact-check-v7-fixed-claim-verification",
+        "article-writer-v1-safe-facts-hold-retry",
 
       endpoints: [
         "GET /health",

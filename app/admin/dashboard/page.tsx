@@ -51,7 +51,7 @@ export default async function DashboardPage() {
               </div>
               <h2 className="mt-4 text-3xl font-black">Automatic discovery is online.</h2>
               <p className="mt-3 max-w-2xl leading-7 text-white/65">
-                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. Story scoring is online. The decision engine and autonomous research agent are online. Multi-source fact checking is now the live quality gate; publishing remains protected.
+                Signed in as {user.email}. Active RSS sources are now prepared for scheduled discovery and duplicate protection. Story scoring is online. The decision engine and autonomous research agent are online. Multi-source fact checking is the live evidence gate. Approved stories now flow into the verified-safe-facts article writer; public publishing remains protected.
               </p>
             </div>
             <div className="hidden rounded-2xl bg-white/10 px-4 py-3 text-sm md:block">
@@ -82,6 +82,7 @@ export default async function DashboardPage() {
                 <Link href="/admin/stories" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Story inbox</Link>
                 <Link href="/admin/research" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Research queue</Link>
                 <Link href="/admin/fact-checks" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Fact checks</Link>
+                <Link href="/admin/articles" className="rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black">Article drafts</Link>
                 <Link href="/admin/sources" className="rounded-xl bg-[#111318] px-3 py-2 text-xs font-black text-white">Manage sources</Link>
               </div>
             </div>
@@ -93,8 +94,8 @@ export default async function DashboardPage() {
               <li>05 — Fiji + Aura relevance engine ✓</li>
               <li>06 — Decision engine + research agent ✓</li>
               <li>07 — Multi-source fact checker ✓</li>
-              <li>08 — Article writer + SEO</li>
-              <li>09 — Quality gate + publishing</li>
+              <li>08 — Article writer + SEO ✓</li>
+              <li>09 — Final quality gate + public publishing</li>
             </ol>
           </div>
 
