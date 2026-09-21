@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
+import { articlePath, getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED !== "true") return [];
@@ -12,7 +12,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/editorial-standards",
     "/fact-checking",
     "/corrections",
-    "/ai-policy",
     "/privacy",
     "/contact",
     "/authors/aura-digital-intelligence",
@@ -29,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.75,
     })),
     ...articles.map((article) => ({
-      url: `${base}/news/${article.slug}`,
+      url: `${base}${articlePath(article)}`,
       lastModified: new Date(article.updated_at || article.published_at || article.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.85,

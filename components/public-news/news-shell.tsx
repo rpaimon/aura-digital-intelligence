@@ -1,61 +1,79 @@
 import Link from "next/link";
-import { ArrowUpRight, Menu, Search } from "lucide-react";
-
-const nav = [
-  { href: "/news", label: "All News" },
-  { href: "/categories", label: "Categories" },
-  { href: "/about", label: "About Us" },
-  { href: "/authors", label: "Authors" },
-  { href: "/career", label: "Career" },
-  { href: "/contact", label: "Contact" },
-];
-
-const ribbon = [
-  ["AI", "/news/topic/ai", "#25C8E0"],
-  ["CYBER", "/news/topic/cybersecurity", "#FF4F87"],
-  ["CLOUD", "/news/topic/cloud", "#8CCB4A"],
-  ["BUSINESS", "/news/topic/business-tech", "#FF7142"],
-  ["ECOMMERCE", "/news/topic/ecommerce", "#F4C844"],
-  ["FIJI + PACIFIC", "/news/topic/fiji-pacific", "#9D67FF"],
-] as const;
+import { ArrowUpRight, Search } from "lucide-react";
 
 export function NewsHeader() {
+  const desktopNav = [
+    { href: "/news", label: "All News", color: "#194B70" },
+    { href: "/categories", label: "Categories", color: "#B82F70" },
+    { href: "/about", label: "About Us", color: "#12A7BE" },
+    { href: "/career", label: "Career", color: "#FF623F" },
+    { href: "/contact", label: "Contact", color: "#839439" },
+  ];
+
+  const mobileNav = [
+    { href: "/news", label: "News", icon: "▣", color: "#194B70" },
+    { href: "/categories", label: "Categories", icon: "⌘", color: "#B82F70" },
+    { href: "/about", label: "About", icon: "◌", color: "#12A7BE" },
+    { href: "/career", label: "Career", icon: "ϟ", color: "#FF623F" },
+    { href: "/contact", label: "Contact", icon: "⌕", color: "#839439" },
+  ];
+
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#070707]/95 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <Link href="/" className="group leading-none">
-          <span className="block text-[10px] font-black uppercase tracking-[0.24em] text-white/38">Aura Digital Fiji</span>
-          <span className="mt-1.5 block text-xl font-black uppercase tracking-[-0.045em] text-white">Aura Intelligence</span>
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-black text-white">
+      <div className="hidden min-h-[62px] lg:grid lg:grid-cols-[258px_repeat(5,minmax(130px,1fr))_182px]">
+        <Link href="/" className="flex items-center border-r border-white/10 px-8 font-serif text-[28px] font-semibold tracking-[-0.045em]">
+          Aura Intelligence
         </Link>
-        <nav className="hidden items-center gap-6 text-[11px] font-black uppercase tracking-[0.12em] text-white/58 lg:flex">
-          {nav.map((item) => <Link key={item.href} href={item.href} className="transition hover:text-white">{item.label}</Link>)}
-        </nav>
-        <div className="flex items-center gap-2">
-          <details className="group relative">
-            <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full border border-white/12 text-white/65 transition hover:bg-white hover:text-black [&::-webkit-details-marker]:hidden"><Search size={16} /></summary>
-            <div className="fixed inset-x-0 top-[106px] z-50 border-y border-white/10 bg-[#0b0b0b] p-4 shadow-2xl sm:p-6">
-              <form action="/news" method="get" className="mx-auto flex max-w-3xl items-center gap-3">
-                <input name="q" placeholder="Search Aura Intelligence..." className="min-w-0 flex-1 border-b-2 border-white bg-transparent px-1 py-3 text-lg font-bold text-white outline-none placeholder:text-white/28" />
-                <button className="rounded-full bg-white px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-black">Search</button>
-              </form>
-            </div>
-          </details>
-          <details className="relative lg:hidden">
-            <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full border border-white/12 text-white/70 [&::-webkit-details-marker]:hidden"><Menu size={17} /></summary>
-            <div className="absolute right-0 top-12 w-64 border border-white/10 bg-[#0b0b0b] p-3 shadow-2xl">
-              {nav.map((item) => <Link key={item.href} href={item.href} className="block border-b border-white/8 px-3 py-3 text-xs font-black uppercase tracking-[0.12em] text-white/70 last:border-b-0">{item.label}</Link>)}
-              <a href="https://auradigitalfiji.com" className="mt-3 flex items-center justify-between bg-white px-3 py-3 text-xs font-black uppercase tracking-[0.12em] text-black">Aura Digital Fiji <ArrowUpRight size={13}/></a>
-            </div>
-          </details>
-          <a href="https://auradigitalfiji.com" className="hidden items-center gap-1.5 border border-white/14 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-white hover:text-black sm:inline-flex">Aura Digital Fiji <ArrowUpRight size={13}/></a>
-        </div>
+        {desktopNav.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="grid place-items-center border-r border-black/15 px-4 text-[12px] font-black uppercase tracking-[0.06em] transition hover:brightness-110"
+            style={{ backgroundColor: item.color }}
+          >
+            {item.label}
+          </Link>
+        ))}
+        <details className="group relative bg-[#0B6E24]">
+          <summary className="grid h-full cursor-pointer list-none place-items-center px-5 text-[12px] font-black uppercase tracking-[0.06em] [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-2"><Search size={15}/> Search</span>
+          </summary>
+          <div className="absolute right-0 top-full z-50 w-[420px] border border-white/10 bg-[#0b0b0b] p-5 shadow-2xl">
+            <form action="/news" method="get" className="flex items-center gap-3">
+              <input name="q" placeholder="Search Aura Intelligence..." className="min-w-0 flex-1 border-b-2 border-white bg-transparent px-1 py-3 text-base font-bold text-white outline-none placeholder:text-white/28" />
+              <button className="bg-white px-4 py-3 text-[11px] font-black uppercase tracking-[0.1em] text-black">Search</button>
+            </form>
+          </div>
+        </details>
       </div>
-      <div className="border-t border-white/8">
-        <div className="mx-auto flex max-w-[1480px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {ribbon.map(([label, href, color]) => (
-            <Link key={href} href={href} className="min-w-max flex-1 px-5 py-2.5 text-center text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110" style={{ backgroundColor: color }}>{label}</Link>
+
+      <div className="lg:hidden">
+        <div className="grid grid-cols-[1fr_repeat(5,56px)] border-b border-white/10">
+          <Link href="/" className="flex min-w-0 items-center px-4 py-4 font-serif text-[24px] font-semibold tracking-[-0.045em]">
+            Aura Intelligence
+          </Link>
+          {mobileNav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-label={item.label}
+              title={item.label}
+              className="grid min-h-[62px] place-items-center border-l border-black/15 text-[24px] font-semibold transition active:brightness-90"
+              style={{ backgroundColor: item.color }}
+            >
+              <span aria-hidden="true">{item.icon}</span>
+            </Link>
           ))}
         </div>
+        <details className="group border-b border-white/10 bg-[#0B6E24]">
+          <summary className="flex cursor-pointer list-none items-center justify-center gap-2 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] [&::-webkit-details-marker]:hidden">
+            <Search size={13}/> Search Aura Intelligence
+          </summary>
+          <form action="/news" method="get" className="flex items-center gap-2 border-t border-black/15 bg-[#0a0a0a] p-3">
+            <input name="q" placeholder="Search stories..." className="min-w-0 flex-1 border border-white/15 bg-black px-3 py-2.5 text-sm font-bold text-white outline-none placeholder:text-white/30" />
+            <button className="bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.1em] text-black">Go</button>
+          </form>
+        </details>
       </div>
     </header>
   );

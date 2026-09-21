@@ -1213,14 +1213,44 @@ async function updateJob(
 }
 
 
+const SEO_SLUG_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "has", "have", "how", "in", "into", "is", "it", "its", "new", "of", "on", "or", "our", "s", "the", "their", "this", "to", "what", "when", "where", "which", "who", "why", "with", "your",
+]);
+
 function slugify(value) {
-  return String(value || "")
+  const words = String(value || "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 72) || `story-${Date.now()}`;
+    .replace(/[^a-z0-9\s-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const useful = words.filter((word) => !SEO_SLUG_STOP_WORDS.has(word));
+  const chosen = (useful.length >= 5 ? useful : words).slice(0, 10);
+  return chosen.join("-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 72) || `story-${Date.now()}`;
+}
+
+async function buildUniqueArticleSlug(env, title, storyId) {
+  const base = slugify(title);
+  try {
+    const response = await sb(env, `articles?select=id,story_id&slug=eq.${encodeURIComponent(base)}&limit=1`);
+    if (response.ok) {
+      const rows = await response.json();
+      if (!rows.length || rows[0]?.story_id === storyId) return base;
+    }
+  } catch {}
+  return `${base}-${String(storyId || "story").slice(0, 6)}`;
+}
+
+function inferArticleCategory(story, generated) {
+  const text = `${story?.title || ""} ${story?.description || ""} ${story?.category || ""} ${generated?.title || ""} ${generated?.category || ""}`.toLowerCase();
+  if (/cyber|security|privacy|ransomware|phishing|hack|malware|breach|threat intelligence|supply-chain hacking|credential|vulnerab/.test(text)) return "Cybersecurity";
+  if (/\bai\b|artificial intelligence|machine learning|gemini|openai|anthropic|llm|model/.test(text)) return "Artificial Intelligence";
+  if (/cloud|hosting|infrastructure|data center|dns|server|network/.test(text)) return "Cloud";
+  if (/ecommerce|commerce|payment|retail|shopify|checkout|m-paisa|mpaisa/.test(text)) return "Ecommerce";
+  if (/fiji|pacific|samoa|tonga|vanuatu|papua new guinea|solomon islands/.test(text)) return "Fiji + Pacific";
+  if (/business|enterprise|productivity|workplace|digital transformation/.test(text)) return "Business";
+  return "Technology";
 }
 
 function asStringArray(value) {
@@ -1617,25 +1647,31 @@ Write a high-value, original Aura Digital Intelligence article for business read
 EDITORIAL PURPOSE:
 This is not a generic rewrite. Turn a verified global technology development into useful, practical intelligence for Fiji businesses. The reader should understand what happened, why it matters, and what action is sensible.
 
-FACT RULES:
-- SAFE FACTS are the only claims you may present as established facts about the news event.
-- Never invent Fiji statistics, local adoption, customer impact, dates, numbers, quotes, causes or technical details.
-- Fiji implications must be framed as analysis or practical guidance unless directly present in SAFE FACTS.
-- Recommendations may be general professional advice, clearly written as recommendations rather than new factual claims.
+FACT RULES — FAIL CLOSED:
+- SAFE FACTS are the complete fact bank for the news event. Every event-specific factual sentence must be directly supported by one or more SAFE FACTS.
+- SOURCE LABELS are names only. Never use them as permission to introduce an extra fact.
+- Never invent or infer dates, numbers, names, attack methods, targets, causes, quotes, outcomes, law-enforcement activity or technical details unless they appear in SAFE FACTS.
+- If the SAFE FACTS are narrow, keep the factual reporting narrow. Do not fill gaps.
+- Fiji implications may add analysis and recommendations, but clearly frame them as analysis: “For Fiji businesses, this means…”, “This suggests…”, or “A practical response is…”.
+- Never invent Fiji statistics, adoption rates, local incidents or customer impact.
+- Recommendations may be general professional guidance, not claims about what happened in the event.
 - Do not copy, imitate or closely paraphrase publisher wording.
-- Do not mention that the article is AI-generated inside the article body; site-level editorial disclosure handles that transparently.
+- Do not discuss the production process or automation inside the article body.
 - Do not include a Sources section; verified citations are appended by application code.
 
 REQUIRED STRUCTURE:
-Opening: concise news lead based only on SAFE FACTS.
+A concise lead based only on SAFE FACTS. Do not add a heading called “Opening”.
 ## What happened
 ## Why it matters
 ## What this means for Fiji businesses
 ## What businesses should do now
 
-In the Fiji section, be useful even when direct local impact is limited: explain which kinds of Fiji organisations should pay attention and why, without pretending the event happened locally.
-Aim for 500–850 words, but never pad weak evidence. Prefer a shorter accurate article over invented detail.
+In the Fiji section, be genuinely useful even when direct local impact is limited: explain which kinds of Fiji organisations should pay attention and why, without pretending the event happened locally.
+Use numbered or bulleted recommendations when that improves readability.
+Aim for 500–800 words, but never pad weak evidence. Prefer a shorter accurate article over invented detail.
 Tone: authoritative, plain English, business-focused, no hype, no clickbait.
+Headline: factual, specific, preferably 55–82 characters, and naturally communicate the Fiji/business angle when relevant.
+CATEGORY must be one of: Cybersecurity, Artificial Intelligence, Cloud, Business, Ecommerce, Fiji + Pacific, Technology. Security incidents, hacking, breaches, phishing, malware and threat intelligence belong in Cybersecurity.
 
 ORIGINAL STORY TITLE:\n${story.title}
 CATEGORY:\n${story.category || "Technology"}
@@ -1685,16 +1721,15 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
       originality = evaluateOriginality(generated.content, sourceFingerprints, settings);
     }
 
-    const title = String(generated.title || story.title).replace(/\s+/g, " ").trim().slice(0, 180);
-    const slugBase = slugify(title);
-    const slug = `${slugBase}-${String(story.id).slice(0, 8)}`;
+    const title = String(generated.title || story.title).replace(/\s+/g, " ").trim().slice(0, 120);
+    const slug = await buildUniqueArticleSlug(env, title, story.id);
     const content = appendDeterministicSources(generated.content, evidenceSources);
     const normalizedArticle = {
       title,
       subtitle: String(generated.subtitle || "").trim().slice(0, 260),
       excerpt: String(generated.excerpt || "").trim().slice(0, 500),
       content,
-      category: String(generated.category || story.category || "Technology").trim().slice(0, 100),
+      category: inferArticleCategory(story, generated),
       seo_title: String(generated.seo_title || title).replace(/\s+/g, " ").trim().slice(0, 70),
       seo_description: String(generated.seo_description || generated.excerpt || "").replace(/\s+/g, " ").trim().slice(0, 180),
       keywords: String(generated.keywords || "").replace(/\s+/g, " ").trim().slice(0, 500),
@@ -3954,6 +3989,34 @@ async function recoverStaleJobs(env) {
   return recovered;
 }
 
+async function backfillOneMissingArticleImage(env) {
+  if (!env.PEXELS_API_KEY) return null;
+  const response = await sb(
+    env,
+    "articles?select=id,story_id,title,category,featured_image_url,stories(id,title,description,category)&featured_image_url=is.null&status=in.(review,approved,published)&order=created_at.desc&limit=1"
+  );
+  if (!response.ok) return null;
+  const rows = await response.json();
+  const article = rows[0];
+  if (!article) return null;
+  const story = article.stories || { id: article.story_id, title: article.title, category: article.category };
+  const image = await fetchPexelsImage(env, story, { title: article.title, category: article.category });
+  if (!image?.url) return { articleId: article.id, updated: false };
+  const save = await sb(env, `articles?id=eq.${encodeURIComponent(article.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      featured_image_url: image.url,
+      featured_image_credit: image.credit,
+      featured_image_source_url: image.sourceUrl,
+      featured_image_alt: image.alt,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!save.ok) return { articleId: article.id, updated: false };
+  return { articleId: article.id, updated: true };
+}
+
 async function processQueuedArticles(env, thresholds, failures) {
   if (!thresholds.articleWriterEnabled) return [];
   const articleJobs = await getQueuedArticleJobs(env, thresholds.maxArticles);
@@ -4045,6 +4108,13 @@ async function runCycle(env) {
     failures.push({ stage: "final-quality-gate", error: e instanceof Error ? e.message : String(e) });
   }
 
+  let articleImageBackfill = null;
+  try {
+    articleImageBackfill = await backfillOneMissingArticleImage(env);
+  } catch (e) {
+    failures.push({ stage: "article-image-backfill", error: e instanceof Error ? e.message : String(e) });
+  }
+
   let publishedArticles = [];
   try {
     publishedArticles = await publishEligibleArticles(env, thresholds);
@@ -4075,6 +4145,7 @@ async function runCycle(env) {
     articlesWritten,
     qualityGateProcessed: qualityGateResults.length,
     qualityGateResults,
+    articleImageBackfill,
     publishedCount: publishedArticles.length,
     publishedArticles,
     dailyStats,
@@ -4106,7 +4177,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2-two-a-day-seo",
+          "newsroom-conversion-v3-framer-editorial",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4173,7 +4244,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2-two-a-day-seo",
+        "newsroom-conversion-v3-framer-editorial",
 
       endpoints: [
         "GET /health",

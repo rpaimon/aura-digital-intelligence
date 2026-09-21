@@ -1,9 +1,9 @@
-import { getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { articlePath, getPublishedArticles, siteUrl } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
 function xml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 export async function GET() {
@@ -21,7 +21,7 @@ export async function GET() {
   const base = siteUrl();
   const urls = articles.map((article) => `
   <url>
-    <loc>${xml(`${base}/news/${article.slug}`)}</loc>
+    <loc>${xml(`${base}${articlePath(article)}`)}</loc>
     <news:news>
       <news:publication>
         <news:name>Aura Digital Intelligence</news:name>

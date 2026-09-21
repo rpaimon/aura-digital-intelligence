@@ -15,22 +15,85 @@ function renderInline(text: string) {
   return parts;
 }
 
-export function ArticleMarkdown({ content }: { content: string }) {
+function cleanHeading(value: string) {
+  const trimmed = value.trim();
+  if (/^opening$/i.test(trimmed)) return "What happened";
+  return trimmed;
+}
+
+function headingKey(value: string) {
+  return cleanHeading(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function ArticleMarkdown({
+  content,
+  afterSection,
+}: {
+  content: string;
+  afterSection?: Record<string, React.ReactNode>;
+}) {
   const lines = content.split(/\r?\n/);
   const nodes: React.ReactNode[] = [];
   let paragraph: string[] = [];
   let bullets: string[] = [];
-  const flushParagraph = () => { if (!paragraph.length) return; const text = paragraph.join(" ").trim(); if (text) nodes.push(<p key={`p-${nodes.length}`} className="text-[1.06rem] leading-[1.9] text-white/72 sm:text-[1.13rem]">{renderInline(text)}</p>); paragraph=[]; };
-  const flushBullets = () => { if (!bullets.length) return; nodes.push(<ul key={`ul-${nodes.length}`} className="space-y-3 border-y border-white/10 py-5 text-[1.02rem] leading-7 text-white/70">{bullets.map((item,index)=><li key={index} className="flex gap-3"><span className="mt-3 h-1.5 w-1.5 shrink-0 bg-white"/><span>{renderInline(item)}</span></li>)}</ul>); bullets=[]; };
+  let numbered: string[] = [];
+  let currentH2 = "";
+
+  const maybeInsert = () => {
+    const key = headingKey(currentH2);
+    if (key && afterSection?.[key]) nodes.push(<React.Fragment key={`insert-${nodes.length}`}>{afterSection[key]}</React.Fragment>);
+  };
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    const text = paragraph.join(" ").trim();
+    if (text) nodes.push(<p key={`p-${nodes.length}`} className="adi-body-paragraph">{renderInline(text)}</p>);
+    paragraph = [];
+  };
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    nodes.push(<ul key={`ul-${nodes.length}`} className="adi-body-list">{bullets.map((item, index) => <li key={index}><span className="adi-body-list-dot"/><span>{renderInline(item)}</span></li>)}</ul>);
+    bullets = [];
+  };
+  const flushNumbered = () => {
+    if (!numbered.length) return;
+    nodes.push(<ol key={`ol-${nodes.length}`} className="adi-body-numbered">{numbered.map((item, index) => <li key={index}><span className="adi-body-number">{String(index + 1).padStart(2, "0")}</span><span>{renderInline(item)}</span></li>)}</ol>);
+    numbered = [];
+  };
+  const flushAll = () => { flushParagraph(); flushBullets(); flushNumbered(); };
+
   for (const raw of lines) {
     const line = raw.trim();
-    if (!line) { flushParagraph(); flushBullets(); continue; }
-    if (/^###\s+/.test(line)) { flushParagraph(); flushBullets(); nodes.push(<h3 key={`h3-${nodes.length}`} className="pt-5 text-2xl font-black uppercase tracking-[-0.035em] text-white sm:text-3xl">{renderInline(line.replace(/^###\s+/, ""))}</h3>); continue; }
-    if (/^##\s+/.test(line)) { flushParagraph(); flushBullets(); nodes.push(<h2 key={`h2-${nodes.length}`} className="pt-8 text-3xl font-black uppercase tracking-[-0.05em] text-white sm:text-4xl">{renderInline(line.replace(/^##\s+/, ""))}</h2>); continue; }
-    if (/^>\s+/.test(line)) { flushParagraph(); flushBullets(); nodes.push(<blockquote key={`q-${nodes.length}`}>{renderInline(line.replace(/^>\s+/, ""))}</blockquote>); continue; }
-    if (/^[-*]\s+/.test(line)) { flushParagraph(); bullets.push(line.replace(/^[-*]\s+/, "")); continue; }
+    if (!line) { flushAll(); continue; }
+    if (/^###\s+/.test(line)) {
+      flushAll();
+      nodes.push(<h3 key={`h3-${nodes.length}`} className="adi-body-h3">{renderInline(cleanHeading(line.replace(/^###\s+/, "")))}</h3>);
+      continue;
+    }
+    if (/^##\s+/.test(line)) {
+      flushAll();
+      maybeInsert();
+      currentH2 = cleanHeading(line.replace(/^##\s+/, ""));
+      nodes.push(<h2 key={`h2-${nodes.length}`} className="adi-body-h2">{renderInline(currentH2)}</h2>);
+      continue;
+    }
+    if (/^>\s+/.test(line)) {
+      flushAll();
+      nodes.push(<blockquote key={`q-${nodes.length}`}>{renderInline(line.replace(/^>\s+/, ""))}</blockquote>);
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      flushParagraph(); flushNumbered();
+      bullets.push(line.replace(/^[-*]\s+/, ""));
+      continue;
+    }
+    if (/^\d+[.)]\s+/.test(line)) {
+      flushParagraph(); flushBullets();
+      numbered.push(line.replace(/^\d+[.)]\s+/, ""));
+      continue;
+    }
     paragraph.push(line);
   }
-  flushParagraph(); flushBullets();
-  return <div className="space-y-7">{nodes}</div>;
+  flushAll();
+  maybeInsert();
+  return <div className="adi-article-prose">{nodes}</div>;
 }
