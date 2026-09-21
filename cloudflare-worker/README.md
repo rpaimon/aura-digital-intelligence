@@ -1,41 +1,51 @@
-# Aura Digital Intelligence — Free Acquisition Engine v2
+# Aura Digital Intelligence Worker
 
-The Worker is now **deterministic first, AI last**. The objective is not maximum article volume; it is two strong Fiji-relevant technology articles per day that can earn search visibility and send qualified readers to Aura Digital Fiji.
+This Worker runs the production automation for the Free Acquisition Engine v2.
 
 ## Pipeline
 
-1. Vercel RSS Scout discovers stories from the curated source network.
-2. New stories are scored with deterministic code: freshness, source trust, Fiji/Pacific relevance, business usefulness and Aura service relevance. **No generative AI is used here.**
-3. The best qualified story is queued for verification. The daily AI candidate cap is 8 and stops early once the daily publishable target is reached.
-4. Independent evidence is discovered through the existing GDELT / Google News / Bing News chain and fetched by direct HTTP / Jina / Browser Run fallbacks.
-5. Only this small candidate set uses generative AI for claim classification. Groq is preferred for verification, Gemini is the fallback.
-6. Deterministic code validates source indexes, derives `safe_facts`, calculates confidence and decides APPROVE/HOLD.
-7. APPROVED stories use Gemini for original article writing, with Groq fallback.
-8. Originality and final quality gates run in code.
-9. Automatic publication is capped at two articles per Fiji day.
-10. Contextual article CTAs route readers to the relevant Aura Digital Fiji service and record privacy-light conversion events.
+1. Recover stale/deferred jobs.
+2. Give approved article-writing jobs first access to free AI providers.
+3. Trigger the Vercel RSS scout.
+4. Score new stories deterministically with zero routine AI spend.
+5. Queue only the strongest daily candidates.
+6. Retrieve independent evidence.
+7. Verify fixed claims with Groq/Gemini free providers.
+8. Write approved stories from verified safe facts only.
+9. Run originality and deterministic final-quality gates.
+10. Backfill one missing article image when Pexels is configured.
+11. Publish eligible articles under the daily cap.
 
-## Free provider router
-
-Recommended secrets:
-
-- `GEMINI_API_KEY` — final article writing primary
-- `GROQ_API_KEY` — fact-check verification primary
-- `PEXELS_API_KEY` — optional large article imagery
-
-Existing secrets/bindings remain:
+## Required secrets
 
 - `VERCEL_SCOUT_URL`
 - `CRON_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
-- `AI` binding (kept as an emergency fallback only)
-- `BROWSER` binding
+- `GROQ_API_KEY`
+- `GEMINI_API_KEY`
 
-Cloudflare Workers AI fallback is **disabled by default** by database setting, so the old 10,000-neuron daily allowance is not consumed unless explicitly enabled later.
+Optional:
 
-If all configured free AI providers are temporarily unavailable or rate-limited, the job is deferred and retried later. It does not consume a real attempt and it does not publish a lower-quality substitute.
+- `PEXELS_API_KEY`
 
-## Deployment
+Bindings:
 
-See `FREE_ACQUISITION_ENGINE_V2_SETUP.md` in the project root. Migration `013_free_acquisition_engine_v2.sql` is required before enabling the new Worker.
+- `BROWSER`
+- `AI` (emergency fallback only; disabled by default in database settings)
+
+## Schedule
+
+Production cron:
+
+```text
+*/15 * * * *
+```
+
+## Expected health stage
+
+```text
+free-acquisition-engine-v2-framer-v1-stable
+```
+
+If free AI providers are temporarily unavailable or rate-limited, eligible jobs are deferred instead of permanently failed or downgraded to unsafe content.

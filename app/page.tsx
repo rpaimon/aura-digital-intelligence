@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Rss, ShieldCheck } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 import { NumberedPick, SectionHeading, StoryCard, categoryColor, formatNewsDate } from "@/components/public-news/framagz-ui";
-import { getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { articlePath, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +33,7 @@ function HotSection({ title, href, articles, accent }: { title: string; href: st
 export default async function Home() {
   const articles = await getPublishedArticles(60);
   const lead = articles[0];
+  const leadCategory = lead ? displayCategory(lead) : "Technology";
   const happenings = articles.slice(1, 5);
   const staffPicks = articles.slice(0, 3);
   const ai = topicArticles(articles, /\bai\b|artificial intelligence|machine learning|gemini|openai|anthropic/);
@@ -62,12 +63,12 @@ export default async function Home() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
                 <div className="relative flex min-h-[500px] flex-col justify-end p-5 sm:min-h-[610px] sm:p-8 lg:p-10">
                   <div className="mb-auto flex items-center justify-between gap-3">
-                    <span className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black" style={{ backgroundColor: categoryColor(lead.category) }}>{lead.category || "Technology"}</span>
+                    <span className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black" style={{ backgroundColor: categoryColor(leadCategory) }}>{leadCategory}</span>
                     <span className="bg-black/70 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 backdrop-blur">{formatNewsDate(lead.published_at)}</span>
                   </div>
-                  <h2 className="max-w-5xl text-4xl font-black uppercase leading-[.92] tracking-[-0.055em] text-white sm:text-6xl lg:text-7xl"><Link href={`/news/${lead.slug}`}>{lead.title}</Link></h2>
+                  <h2 className="max-w-5xl text-4xl font-black uppercase leading-[.92] tracking-[-0.055em] text-white sm:text-6xl lg:text-7xl"><Link href={articlePath(lead)}>{lead.title}</Link></h2>
                   {lead.excerpt && <p className="mt-5 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">{lead.excerpt}</p>}
-                  <Link href={`/news/${lead.slug}`} className="mt-6 inline-flex w-fit items-center gap-2 border-b-2 border-white pb-1 text-xs font-black uppercase tracking-[0.12em]">Read story <ArrowRight size={14}/></Link>
+                  <Link href={articlePath(lead)} className="mt-6 inline-flex w-fit items-center gap-2 border-b-2 border-white pb-1 text-xs font-black uppercase tracking-[0.12em]">Read story <ArrowRight size={14}/></Link>
                 </div>
               </article>
 

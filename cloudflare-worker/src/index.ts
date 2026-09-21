@@ -4177,7 +4177,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "newsroom-conversion-v3-framer-editorial",
+          "free-acquisition-engine-v2-framer-v1-stable",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4244,7 +4244,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "newsroom-conversion-v3-framer-editorial",
+        "free-acquisition-engine-v2-framer-v1-stable",
 
       endpoints: [
         "GET /health",

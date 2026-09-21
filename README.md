@@ -1,91 +1,128 @@
-# Aura Digital Intelligence
+# Aura Digital Intelligence — Master Project
 
-Aura Digital Intelligence is the customer-acquisition publication of Aura Digital Fiji.
+This repository is the production master for **Aura Digital Intelligence** at `https://intelligence.auradigitalfiji.com`.
 
-The commercial objective is simple:
+## Design freeze
 
-**useful Fiji-focused technology intelligence → organic discovery → trust → relevant Aura Digital Fiji service → enquiry.**
+The public layout is the **Framer Newsroom Rebuild v1** design. Do not redesign or replace the public layout unless explicitly requested. Functional changes should preserve the existing structure, spacing, typography, colors, navigation, cards, article layout and responsive behavior.
 
-This project is deliberately designed to run on free infrastructure and free AI allowances without processing every incoming story with an expensive language model.
+## Current production architecture
 
-## Current architecture — Free Acquisition Engine v2
+The newsroom uses a deterministic-first, AI-last pipeline designed to operate on free infrastructure and free AI allowances:
 
-1. Curated RSS/source discovery runs frequently.
-2. URL normalization and duplicate protection run without generative AI.
-3. Story importance, freshness, Fiji/Pacific relevance, business relevance and Aura service fit are scored deterministically in code.
-4. Only the strongest small candidate set is sent to verification.
-5. Independent evidence is retrieved from distinct publishers.
-6. Free AI providers classify fixed claims; application code validates source indexes, derives safe facts and calculates the final confidence/verdict.
-7. APPROVED stories are drafted from verified safe facts only.
-8. Originality fingerprints detect excessive phrase overlap and can trigger an automatic rewrite.
-9. A deterministic final quality gate checks evidence, originality, SEO, Fiji usefulness and practical business value.
-10. Eligible articles are automatically published, capped at two per Fiji day.
-11. Contextual Aura service CTAs record privacy-light first-party conversion events.
+1. Curated RSS/Atom discovery and source-health monitoring.
+2. URL normalization and duplicate protection.
+3. Deterministic scoring for freshness, source trust, Fiji/Pacific relevance, business relevance and Aura service relevance.
+4. Only the strongest candidates proceed to independent evidence retrieval.
+5. Fixed-claim verification uses free AI providers through a provider router.
+6. Application code validates evidence references and calculates confidence/verdict.
+7. APPROVED stories are written from verified safe facts only.
+8. Originality fingerprints block excessive phrase overlap and can trigger a rewrite.
+9. Deterministic final quality gate checks evidence, originality, SEO and practical usefulness.
+10. Eligible articles can publish automatically, capped at two per Fiji day.
+11. Contextual Aura Digital Fiji links use first-party conversion tracking.
 
 ## Free AI provider router
 
-The Worker does not require paid Cloudflare Workers AI for normal operation.
+Cloudflare Workers AI is **not required** for normal operation.
 
-Recommended free providers:
+Recommended Worker secrets:
 
-- `GROQ_API_KEY` — verification primary (`openai/gpt-oss-120b` by default)
-- `GEMINI_API_KEY` — article-writing primary (`gemini-2.5-flash` by default)
-- `PEXELS_API_KEY` — optional article imagery
+- `GROQ_API_KEY` — verification provider
+- `GEMINI_API_KEY` — article-writing provider
+- `PEXELS_API_KEY` — optional editorial imagery
+- `CRON_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `VERCEL_SCOUT_URL`
 
-Cloudflare Workers AI is kept only as an optional emergency fallback and is disabled by database setting by default.
+Cloudflare AI remains an optional emergency fallback and is disabled by default. Provider quota/rate-limit errors defer jobs instead of permanently failing them.
 
-If all configured free AI providers are temporarily rate-limited or unavailable, jobs are **deferred**, not permanently failed and not downgraded to unsafe content.
+## Vercel environment variables
 
-## Public publication
+Required production variables:
 
-Main domain:
-
-`https://intelligence.auradigitalfiji.com`
-
-Important routes:
-
-- `/` — publication homepage
-- `/news` — newsroom/archive
-- `/news/[slug]` — individual articles
-- `/news/topic/[slug]` — topic authority hubs
-- `/about`
-- `/editorial-standards`
-- `/fact-checking`
-- `/corrections`
-- `/ai-policy`
-- `/privacy`
-- `/contact`
-- `/authors/aura-digital-intelligence`
-- `/news-sitemap.xml`
-
-## Security model
-
-Migration `013_free_acquisition_engine_v2.sql` replaces the old "every authenticated user is an admin" RLS model with an explicit `admin_users` allow-list. Existing Supabase Auth users are snapshotted as admins when migration 013 runs; future auth accounts are not admins automatically.
-
-The feed-test endpoint also validates admin membership and blocks private/local network targets before fetching RSS/Atom URLs.
-
-Never expose or commit:
-
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SECRET_KEY`
 - `CRON_SECRET`
-- `GEMINI_API_KEY`
-- `GROQ_API_KEY`
-- `PEXELS_API_KEY`
-- `.env.local`
-- Cloudflare `.dev.vars`
+- `NEXT_PUBLIC_SITE_URL=https://intelligence.auradigitalfiji.com`
+- `NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED=false` while the publication is still being reviewed
 
-## Deployment
+Never commit `.env.local` or any API key.
 
-Use `FREE_ACQUISITION_ENGINE_V2_SETUP.md` for the one-time controlled upgrade.
+## Cloudflare schedule
 
-## Indexing
+The production Worker runs on:
 
-Keep `NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED=false` until at least one or two real articles have been inspected on the production domain.
+```text
+*/15 * * * *
+```
 
-When the publication is ready for discovery, change it to `true`, redeploy, verify `robots.txt` and the sitemaps, then connect the domain to Google Search Console.
+The Worker processes approved writer jobs first, then discovery/scoring, candidate verification, quality gating and publishing.
 
-## Editorial principle
+## Database
 
-The system is not designed to rewrite other publishers. It selects significant developments, verifies claims against independent evidence, writes from verified facts, adds Fiji business context and checks exact phrase overlap before publication.
+Keep all files in `supabase/migrations/`. They are deployment history and should not be deleted even after they have been run.
 
-A missing article is preferable to an inaccurate or low-value article.
+Migration `013_free_acquisition_engine_v2.sql` contains the current acquisition-engine/security upgrade, including:
+
+- explicit newsroom admin allow-list
+- hardened RLS policies
+- conversion tracking
+- AI defer/retry fields
+- article image attribution
+- deterministic-first settings
+- two-article daily target
+
+## Security
+
+- Admin routes require authenticated membership in `admin_users`.
+- Feed testing blocks private/local targets and unsafe redirects.
+- Service-role keys are server/Worker-only.
+- Public article reads expose published content only.
+- CTA click tracking is server-side and never blocks the destination.
+
+## Public SEO/news infrastructure
+
+- Canonical article URLs use clean SEO slugs.
+- Existing stored legacy slugs remain resolvable and redirect to the clean public path.
+- `NewsArticle` structured data is emitted on article pages.
+- `/sitemap.xml` and `/news-sitemap.xml` use public clean article paths.
+- `/rss.xml` uses public clean article paths.
+- Topic hubs support AI, cybersecurity, cloud, business technology, ecommerce, and Fiji/Pacific coverage.
+- Prominent public UI emphasizes verification, originality and editorial accountability; implementation details remain documented in the technology-use policy.
+
+## Important editorial rules
+
+- Event-specific factual statements must come from verified safe facts.
+- Source names are not permission to invent or infer additional facts.
+- Fiji implications must be framed as analysis/advice unless independently verified.
+- A short accurate article is preferred over padded or invented detail.
+- HOLD/REJECT stories do not enter the writer.
+- Originality and final quality gates must pass before publishing.
+
+## Main commands
+
+```bash
+npm install
+npm run dev
+npm run build
+```
+
+Cloudflare Worker:
+
+```bash
+cd cloudflare-worker
+npm install
+npm run dev
+npm run deploy
+```
+
+## Current Worker health stage
+
+Expected `/health` stage after deploying the Worker in this master:
+
+```text
+free-acquisition-engine-v2-framer-v1-stable
+```
