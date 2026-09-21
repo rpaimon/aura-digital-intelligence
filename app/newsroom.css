@@ -1,0 +1,78 @@
+:root {
+  --adi-bg: #070707;
+  --adi-paper: #0d0d0d;
+  --adi-line: rgba(255,255,255,.12);
+}
+
+html { scroll-behavior: smooth; }
+body { background: var(--adi-bg); }
+
+.adi-noise {
+  background-image:
+    radial-gradient(circle at 15% 5%, rgba(255,255,255,.05), transparent 24%),
+    radial-gradient(circle at 90% 10%, rgba(255,79,135,.08), transparent 20%),
+    linear-gradient(rgba(255,255,255,.015), rgba(255,255,255,.015));
+}
+
+.adi-footer-noise {
+  background-image:
+    linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.adi-story-card { transition: transform .28s ease; }
+.adi-story-card:hover { transform: translateY(-3px); }
+
+.adi-reveal {
+  opacity: 1;
+  transform: none;
+}
+@supports (animation-timeline: view()) {
+  .adi-reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    animation: adi-reveal .8s cubic-bezier(.2,.65,.3,1) both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 28%;
+  }
+}
+
+@keyframes adi-reveal {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.adi-marquee {
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.adi-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: adi-marquee 34s linear infinite;
+}
+.adi-marquee:hover .adi-marquee-track { animation-play-state: paused; }
+@keyframes adi-marquee { to { transform: translateX(-50%); } }
+
+.adi-hero-title {
+  font-size: clamp(4.4rem, 13vw, 12.4rem);
+  line-height: .78;
+  letter-spacing: -.075em;
+}
+
+.adi-article-prose blockquote {
+  margin: 2rem 0;
+  border-left: 4px solid #fff;
+  padding: 1rem 0 1rem 1.25rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.45;
+  color: rgba(255,255,255,.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .adi-marquee-track { animation: none; }
+  .adi-reveal { opacity: 1; transform: none; animation: none; }
+  *, *::before, *::after { transition-duration: .01ms !important; }
+}

@@ -1,31 +1,60 @@
 import Link from "next/link";
-import { ArrowUpRight, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, Menu, Search } from "lucide-react";
+
+const nav = [
+  { href: "/news", label: "All News" },
+  { href: "/categories", label: "Categories" },
+  { href: "/about", label: "About Us" },
+  { href: "/authors", label: "Authors" },
+  { href: "/career", label: "Career" },
+  { href: "/contact", label: "Contact" },
+];
+
+const ribbon = [
+  ["AI", "/news/topic/ai", "#25C8E0"],
+  ["CYBER", "/news/topic/cybersecurity", "#FF4F87"],
+  ["CLOUD", "/news/topic/cloud", "#8CCB4A"],
+  ["BUSINESS", "/news/topic/business-tech", "#FF7142"],
+  ["ECOMMERCE", "/news/topic/ecommerce", "#F4C844"],
+  ["FIJI + PACIFIC", "/news/topic/fiji-pacific", "#9D67FF"],
+] as const;
 
 export function NewsHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#07090d]/82 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
-        <Link href="/" className="group inline-flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center rounded-xl border border-lime-300/30 bg-lime-300/10 text-sm font-black text-lime-300 shadow-[0_0_30px_rgba(190,242,100,0.08)]">A</span>
-          <span className="leading-none">
-            <span className="block text-[10px] font-black uppercase tracking-[0.25em] text-white/45">Aura Digital</span>
-            <span className="mt-1 block text-sm font-black tracking-[-0.02em] text-white">Intelligence</span>
-          </span>
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#070707]/95 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <Link href="/" className="group leading-none">
+          <span className="block text-[10px] font-black uppercase tracking-[0.24em] text-white/38">Aura Digital Fiji</span>
+          <span className="mt-1.5 block text-xl font-black uppercase tracking-[-0.045em] text-white">Aura Intelligence</span>
         </Link>
-        <nav className="hidden items-center gap-5 text-xs font-black text-white/50 lg:flex">
-          <Link href="/news" className="hover:text-white">News</Link>
-          <Link href="/news/topic/cybersecurity" className="hover:text-white">Cybersecurity</Link>
-          <Link href="/news/topic/ai" className="hover:text-white">AI</Link>
-          <Link href="/news/topic/fiji-pacific" className="hover:text-white">Fiji & Pacific</Link>
-          <Link href="/about" className="hover:text-white">About</Link>
+        <nav className="hidden items-center gap-6 text-[11px] font-black uppercase tracking-[0.12em] text-white/58 lg:flex">
+          {nav.map((item) => <Link key={item.href} href={item.href} className="transition hover:text-white">{item.label}</Link>)}
         </nav>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-bold text-white/55 md:flex">
-            <ShieldCheck size={13} className="text-lime-300" /> Verification-first
-          </div>
-          <a href="https://auradigitalfiji.com" className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.06] px-3.5 py-2 text-xs font-black text-white transition hover:border-lime-300/40 hover:bg-lime-300/10 hover:text-lime-200 sm:px-4">
-            Aura Digital Fiji <ArrowUpRight size={13} />
-          </a>
+        <div className="flex items-center gap-2">
+          <details className="group relative">
+            <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full border border-white/12 text-white/65 transition hover:bg-white hover:text-black [&::-webkit-details-marker]:hidden"><Search size={16} /></summary>
+            <div className="fixed inset-x-0 top-[106px] z-50 border-y border-white/10 bg-[#0b0b0b] p-4 shadow-2xl sm:p-6">
+              <form action="/news" method="get" className="mx-auto flex max-w-3xl items-center gap-3">
+                <input name="q" placeholder="Search Aura Intelligence..." className="min-w-0 flex-1 border-b-2 border-white bg-transparent px-1 py-3 text-lg font-bold text-white outline-none placeholder:text-white/28" />
+                <button className="rounded-full bg-white px-5 py-3 text-xs font-black uppercase tracking-[0.12em] text-black">Search</button>
+              </form>
+            </div>
+          </details>
+          <details className="relative lg:hidden">
+            <summary className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full border border-white/12 text-white/70 [&::-webkit-details-marker]:hidden"><Menu size={17} /></summary>
+            <div className="absolute right-0 top-12 w-64 border border-white/10 bg-[#0b0b0b] p-3 shadow-2xl">
+              {nav.map((item) => <Link key={item.href} href={item.href} className="block border-b border-white/8 px-3 py-3 text-xs font-black uppercase tracking-[0.12em] text-white/70 last:border-b-0">{item.label}</Link>)}
+              <a href="https://auradigitalfiji.com" className="mt-3 flex items-center justify-between bg-white px-3 py-3 text-xs font-black uppercase tracking-[0.12em] text-black">Aura Digital Fiji <ArrowUpRight size={13}/></a>
+            </div>
+          </details>
+          <a href="https://auradigitalfiji.com" className="hidden items-center gap-1.5 border border-white/14 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-white hover:text-black sm:inline-flex">Aura Digital Fiji <ArrowUpRight size={13}/></a>
+        </div>
+      </div>
+      <div className="border-t border-white/8">
+        <div className="mx-auto flex max-w-[1480px] overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {ribbon.map(([label, href, color]) => (
+            <Link key={href} href={href} className="min-w-max flex-1 px-5 py-2.5 text-center text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:brightness-110" style={{ backgroundColor: color }}>{label}</Link>
+          ))}
         </div>
       </div>
     </header>
@@ -34,23 +63,51 @@ export function NewsHeader() {
 
 export function NewsFooter() {
   return (
-    <footer className="border-t border-white/10 bg-[#05070a]">
-      <div className="mx-auto grid max-w-[1440px] gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1fr_auto] lg:px-8">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-300">Aura Digital Intelligence</p>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-white/45">Technology intelligence for Fiji and the Pacific. Published by Aura Digital Fiji with independent-source verification, originality controls and transparent automation standards.</p>
-        </div>
-        <div className="flex max-w-xl flex-wrap items-start gap-x-5 gap-y-3 text-xs font-bold text-white/55 md:justify-end">
-          <Link href="/news" className="hover:text-white">Latest</Link>
-          <Link href="/about" className="hover:text-white">About</Link>
-          <Link href="/editorial-standards" className="hover:text-white">Standards</Link>
-          <Link href="/fact-checking" className="hover:text-white">Fact checking</Link>
-          <Link href="/corrections" className="hover:text-white">Corrections</Link>
-          <Link href="/ai-policy" className="hover:text-white">AI policy</Link>
-          <Link href="/contact" className="hover:text-white">Contact</Link>
-          <Link href="/privacy" className="hover:text-white">Privacy</Link>
-          <a href="https://auradigitalfiji.com" className="hover:text-white">Aura Digital Fiji</a>
-          <span className="text-white/25">© {new Date().getFullYear()}</span>
+    <footer className="border-t border-white/10 bg-[#050505] text-white">
+      <div className="adi-footer-noise">
+        <div className="mx-auto max-w-[1480px] px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+          <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-[1.25fr_.7fr_.7fr_1.2fr]">
+            <div>
+              <p className="text-3xl font-black uppercase tracking-[-0.055em]">Aura Intelligence</p>
+              <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-white/35">by Aura Digital Fiji</p>
+              <p className="mt-6 max-w-md text-sm leading-7 text-white/48">Clear technology reporting, practical Fiji business context and evidence-linked analysis for the Pacific.</p>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-white">News Categories</p>
+              <div className="mt-4 space-y-2.5 text-sm font-bold text-white/48">
+                <Link href="/news/topic/ai" className="block hover:text-white">Artificial Intelligence</Link>
+                <Link href="/news/topic/cybersecurity" className="block hover:text-white">Cybersecurity</Link>
+                <Link href="/news/topic/business-tech" className="block hover:text-white">Business Technology</Link>
+                <Link href="/news/topic/fiji-pacific" className="block hover:text-white">Fiji & Pacific</Link>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-white">Quick Links</p>
+              <div className="mt-4 space-y-2.5 text-sm font-bold text-white/48">
+                <Link href="/news" className="block hover:text-white">News</Link>
+                <Link href="/about" className="block hover:text-white">About Us</Link>
+                <Link href="/authors" className="block hover:text-white">The Authors</Link>
+                <Link href="/career" className="block hover:text-white">Career</Link>
+                <Link href="/contact" className="block hover:text-white">Contact Us</Link>
+                <a href="/rss.xml" className="block hover:text-white">RSS Feed</a>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-white">Editorial trust</p>
+              <p className="mt-4 text-sm leading-7 text-white/48">Independent-source verification, originality controls and transparent automation standards protect what reaches publication.</p>
+              <div className="mt-5 flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-[0.1em] text-white/52">
+                <Link href="/editorial-standards" className="hover:text-white">Standards</Link>
+                <Link href="/fact-checking" className="hover:text-white">Fact checking</Link>
+                <Link href="/corrections" className="hover:text-white">Corrections</Link>
+                <Link href="/ai-policy" className="hover:text-white">AI policy</Link>
+                <Link href="/privacy" className="hover:text-white">Privacy</Link>
+              </div>
+            </div>
+          </div>
+          <div className="mt-14 flex flex-col gap-3 border-t border-white/10 pt-6 text-[10px] font-bold uppercase tracking-[0.12em] text-white/28 sm:flex-row sm:items-center sm:justify-between">
+            <p>© 2026 Aura Digital Fiji. All rights reserved.</p>
+            <a href="https://auradigitalfiji.com" className="inline-flex items-center gap-1.5 hover:text-white">Built by Aura Digital Fiji <ArrowUpRight size={12}/></a>
+          </div>
         </div>
       </div>
     </footer>
