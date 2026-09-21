@@ -1,25 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Clock3, ExternalLink, ShieldCheck } from "lucide-react";
+import { notFound } from "next/navigation";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Clock3, ExternalLink, ShieldCheck } from "lucide-react";
 import { ArticleMarkdown } from "@/components/public-news/article-markdown";
-import { AuraInlineCTA } from "@/components/public-news/aura-cta";
-import { EditorialVisual, StoryCard, categoryColor } from "@/components/public-news/framagz-ui";
-import { MobileAuraCTA } from "@/components/public-news/mobile-aura-cta";
+import { NumberedPick, StoryCard, categoryColor } from "@/components/public-news/framagz-ui";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 import { ReadingProgress } from "@/components/public-news/reading-progress";
 import { ShareBar } from "@/components/public-news/share-bar";
-import {
-  articlePath,
-  auraServiceForArticle,
-  canonicalArticleUrl,
-  displayCategory,
-  getPublishedArticleBySlug,
-  getRelatedArticles,
-  readingTime,
-  siteUrl,
-  stripSourcesSection,
-} from "@/lib/news/public";
+import { auraServiceForArticle, getPublishedArticleBySlug, getRelatedArticles, getPublishedArticles, readingTime, siteUrl, stripSourcesSection } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 type Params = Promise<{ slug: string }>;
@@ -28,15 +16,15 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { slug } = await params;
   const article = await getPublishedArticleBySlug(slug);
   if (!article) return { title: "Article not found" };
-  const canonical = canonicalArticleUrl(article);
+  const canonical = article.canonical_url || `${siteUrl()}/news/${article.slug}`;
   const title = article.seo_title || article.title;
-  const description = article.seo_description || article.excerpt || "Technology intelligence from Aura Digital Intelligence.";
+  const description = article.seo_description || article.excerpt || "Verified technology intelligence from Aura Digital Intelligence.";
   const image = article.featured_image_url || `${siteUrl()}/news/${article.slug}/opengraph-image`;
   return {
     title,
     description,
     alternates: { canonical },
-    openGraph: { type: "article", title, description, url: canonical, publishedTime: article.published_at || undefined, modifiedTime: article.updated_at || undefined, section: displayCategory(article), images: [{ url: image, width: 1200, height: 630, alt: article.featured_image_alt || article.title }] },
+    openGraph: { type: "article", title, description, url: canonical, publishedTime: article.published_at || undefined, modifiedTime: article.updated_at || undefined, section: article.category || undefined, images: [{ url: image, width: 1200, height: 630, alt: article.featured_image_alt || article.title }] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }
@@ -50,20 +38,17 @@ export default async function ArticlePage({ params }: { params: Params }) {
   const { slug } = await params;
   const article = await getPublishedArticleBySlug(slug);
   if (!article) notFound();
-  const cleanPath = articlePath(article);
-  if (`/news/${slug}` !== cleanPath) redirect(cleanPath);
 
   const content = stripSourcesSection(article.content);
   const sources = article.article_sources ?? [];
   const related = await getRelatedArticles(article.id, article.category, 3);
+  const latest = await getPublishedArticles(4);
   const cta = auraServiceForArticle(article);
-  const canonical = canonicalArticleUrl(article);
+  const canonical = article.canonical_url || `${siteUrl()}/news/${article.slug}`;
   const image = article.featured_image_url || `${siteUrl()}/news/${article.slug}/opengraph-image`;
   const authorName = article.authors?.name || "Aura Intelligence Desk";
   const authorSlug = article.authors?.slug || "aura-digital-intelligence";
-  const category = displayCategory(article);
-  const accent = categoryColor(category);
-  const ctaHref = `/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`;
+  const accent = categoryColor(article.category);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -73,7 +58,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
     datePublished: article.published_at || undefined,
     dateModified: article.updated_at,
     mainEntityOfPage: canonical,
-    articleSection: category,
+    articleSection: article.category || "Technology",
     isAccessibleForFree: true,
     author: { "@type": "Organization", name: authorName, url: `${siteUrl()}/authors/${authorSlug}` },
     publisher: { "@type": "Organization", name: "Aura Digital Intelligence", url: siteUrl() },
@@ -87,55 +72,48 @@ export default async function ArticlePage({ params }: { params: Params }) {
       <NewsHeader />
 
       <article>
-        <header className="adi-article-header">
-          <div className="adi-article-header-inner">
-            <Link href="/news" className="adi-back-link"><ArrowLeft size={13}/> Back to all news</Link>
-            <div className="adi-article-meta">
-              <span className="adi-article-category" style={{ backgroundColor: accent }}>{category}</span>
-              {article.published_at && <time dateTime={article.published_at}>{dateTime(article.published_at)} FJT</time>}
-              <span className="inline-flex items-center gap-1"><Clock3 size={12}/> {readingTime(content)} min read</span>
-            </div>
-            <h1 className="adi-article-title">{article.title}</h1>
-            {article.subtitle && <p className="adi-article-dek">{article.subtitle}</p>}
-            <div className="adi-article-author-row">
-              <Link href={`/authors/${authorSlug}`} className="adi-article-author">
-                <div className="adi-author-avatar">ADI</div>
-                <div><p>{authorName}</p><span>Technology Editor · Fiji</span></div>
-              </Link>
-              <ShareBar title={article.title} />
+        <header className="adi-noise border-b border-white/10">
+          <div className="mx-auto max-w-[1280px] px-4 pb-10 pt-8 sm:px-6 sm:pb-14 lg:px-8">
+            <Link href="/news" className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/42 hover:text-white"><ArrowLeft size={13}/> Back to all news</Link>
+            <div className="mt-9 max-w-6xl">
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-white/42">
+                <span className="px-3 py-2 text-black" style={{ backgroundColor: accent }}>{article.category || "Technology"}</span>
+                {article.published_at && <><span>•</span><time dateTime={article.published_at}>{dateTime(article.published_at)} FJT</time></>}
+                <span>•</span><span className="inline-flex items-center gap-1"><Clock3 size={11}/> {readingTime(content)} min read</span>
+              </div>
+              <h1 className="mt-7 text-[3rem] font-black uppercase leading-[.93] tracking-[-0.065em] sm:text-6xl lg:text-[6.8rem]">{article.title}</h1>
+              {article.subtitle && <p className="mt-6 max-w-4xl text-lg font-semibold leading-8 text-white/58 sm:text-xl">{article.subtitle}</p>}
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-5 border-t border-white/10 pt-5">
+                <Link href={`/authors/${authorSlug}`} className="group flex items-center gap-3">
+                  <div className="grid h-11 w-11 place-items-center rounded-full bg-white text-xs font-black text-black">ADI</div>
+                  <div><p className="text-xs font-black uppercase tracking-[0.06em] group-hover:text-white/70">{authorName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white/30">Technology Editor · Fiji</p></div>
+                </Link>
+                <ShareBar title={article.title} />
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="adi-article-visual-wrap">
-          <div className="adi-article-visual group"><EditorialVisual article={article} /></div>
-          {article.featured_image_credit && <p className="adi-image-credit">{article.featured_image_source_url ? <a href={article.featured_image_source_url} target="_blank" rel="noreferrer noopener">{article.featured_image_credit}</a> : article.featured_image_credit}</p>}
+        <div className="mx-auto max-w-[1280px] px-4 pt-8 sm:px-6 lg:px-8">
+          <div className="overflow-hidden border border-white/12 bg-[#111]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={image} alt={article.featured_image_alt || article.title} className="aspect-[16/9] max-h-[720px] w-full object-cover" />
+          </div>
+          {article.featured_image_credit && <p className="mt-2 text-right text-[10px] text-white/28">{article.featured_image_source_url ? <a href={article.featured_image_source_url} target="_blank" rel="noreferrer noopener" className="hover:text-white">{article.featured_image_credit}</a> : article.featured_image_credit}</p>}
         </div>
 
-        <div className="adi-article-layout">
-          <div className="adi-article-main">
-            {article.excerpt && <p className="adi-article-summary">{article.excerpt}</p>}
-            <AuraInlineCTA cta={cta} articleSlug={article.slug} variant="early" />
-
-            <ArticleMarkdown
-              content={content}
-              afterSection={{
-                "what this means for fiji businesses": <AuraInlineCTA cta={cta} articleSlug={article.slug} variant="mid" />,
-              }}
-            />
-
-            <AuraInlineCTA cta={cta} articleSlug={article.slug} variant="final" />
+        <div className="mx-auto grid max-w-[1280px] gap-10 px-4 pb-20 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:pt-14">
+          <div className="min-w-0">
+            {article.excerpt && <div className="mb-10 border-y border-white/10 py-6 text-xl font-black leading-8 text-white/82 sm:text-2xl">{article.excerpt}</div>}
+            <div className="adi-article-prose"><ArticleMarkdown content={content} /></div>
 
             {sources.length > 0 && (
-              <section className="adi-sources">
-                <div className="adi-sources-head">
-                  <div><p style={{ color: accent }}>Independent evidence</p><h2>Sources</h2></div>
-                  <span>{sources.length} source{sources.length === 1 ? "" : "s"}</span>
-                </div>
-                <div className="adi-source-list">
+              <section className="mt-14 border-t-4 border-white pt-6">
+                <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: accent }}>Independent evidence</p><h2 className="mt-2 text-4xl font-black uppercase tracking-[-0.05em]">Sources</h2></div><span className="text-[10px] font-black uppercase tracking-[0.12em] text-white/32">{sources.length} source{sources.length === 1 ? "" : "s"}</span></div>
+                <div className="mt-5 grid gap-3">
                   {sources.map((source, index) => (
-                    <a key={source.id} href={source.source_url} target="_blank" rel="noreferrer noopener" className="adi-source-card">
-                      <div><p>Source {String(index + 1).padStart(2, "0")} · {source.source_name}</p><span>{source.citation_text || "Independent reporting used for verification."}</span></div><ExternalLink size={15} />
+                    <a key={source.id} href={source.source_url} target="_blank" rel="noreferrer noopener" className="group flex items-start justify-between gap-4 border border-white/12 bg-[#0c0c0c] p-5 transition hover:bg-white hover:text-black">
+                      <div><p className="text-[9px] font-black uppercase tracking-[0.15em] opacity-60">Source {String(index + 1).padStart(2, "0")} · {source.source_name}</p><p className="mt-2 text-sm font-semibold leading-6 opacity-80">{source.citation_text || "Independent reporting used by the verification pipeline."}</p></div><ExternalLink size={15} className="mt-1 shrink-0 opacity-40" />
                     </a>
                   ))}
                 </div>
@@ -143,28 +121,39 @@ export default async function ArticlePage({ params }: { params: Params }) {
             )}
           </div>
 
-          <aside className="adi-article-sidebar">
-            <div className="adi-trust-card">
-              <div className="adi-trust-title"><ShieldCheck size={16}/> Publication standard</div>
-              <div className="adi-trust-item"><strong>Fact checked</strong><span>Key claims are checked against independent reporting before publication.</span></div>
-              <div className="adi-trust-item"><strong>Originality checked</strong><span>Published drafts are screened for excessive phrase overlap.</span></div>
-              <div className="adi-trust-item"><strong>Corrections welcome</strong><span>If something needs attention, our corrections policy explains how to contact us.</span></div>
-              <Link href="/editorial-standards">Read our standards</Link>
+          <aside className="space-y-6 lg:sticky lg:top-32 lg:self-start">
+            <div className="border border-white/12 bg-[#0c0c0c] p-5">
+              <div className="flex items-center gap-2 border-b-4 border-white pb-4 text-xs font-black uppercase tracking-[0.12em]"><ShieldCheck size={16}/> Publication standard</div>
+              <div className="mt-5 space-y-4 text-xs leading-6 text-white/46">
+                <div className="border-b border-white/10 pb-4"><p className="font-black uppercase tracking-[0.06em] text-white/80">Independent verification</p><p className="mt-1">Evidence-linked claims must clear the newsroom gate before publication.</p></div>
+                <div className="border-b border-white/10 pb-4"><p className="font-black uppercase tracking-[0.06em] text-white/80">Originality protection</p><p className="mt-1">Drafts are checked for excessive exact phrase overlap.</p></div>
+                <div><p className="font-black uppercase tracking-[0.06em] text-white/80">Transparent automation</p><p className="mt-1">Automation assists this newsroom under published editorial standards.</p></div>
+              </div>
+              <Link href="/editorial-standards" className="mt-5 inline-block border-b border-white pb-1 text-[10px] font-black uppercase tracking-[0.12em]">Read our standards</Link>
             </div>
-            <AuraInlineCTA cta={cta} articleSlug={article.slug} variant="mid" />
+
+            <div className="p-6 text-black" style={{ backgroundColor: accent }}>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em]">{cta.eyebrow}</p>
+              <h3 className="mt-3 text-3xl font-black uppercase leading-none tracking-[-0.05em]">{cta.title}</h3>
+              <p className="mt-4 text-sm font-semibold leading-6 text-black/65">{cta.text}</p>
+              <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`} className="mt-5 inline-flex items-center gap-2 border-b-2 border-black pb-1 text-xs font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>
+            </div>
+
+            {latest.length > 1 && <div className="border border-white/12 bg-[#0c0c0c] p-5"><h3 className="border-b-4 border-white pb-4 text-lg font-black uppercase">Staff Picks</h3><div className="mt-2">{latest.filter((item)=>item.id!==article.id).slice(0,3).map((item,index)=><NumberedPick key={item.id} article={item} index={index+1}/>)}</div></div>}
           </aside>
         </div>
       </article>
 
       {related.length > 0 && (
-        <section className="adi-related">
-          <div className="adi-related-head"><div><p>Continue reading</p><h2>Related Intelligence</h2></div><Link href="/news">All news <ArrowUpRight size={12}/></Link></div>
-          <div className="adi-related-grid">{related.map((item) => <StoryCard key={item.id} article={item} compact />)}</div>
+        <section className="border-t border-white/10 bg-[#0a0a0a]">
+          <div className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
+            <div className="mb-7 flex items-end justify-between border-t-4 border-white pt-5"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/32">Continue reading</p><h2 className="mt-1 text-4xl font-black uppercase tracking-[-0.05em]">Related Intelligence</h2></div><Link href="/news" className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/45 hover:text-white">All news <ArrowUpRight size={12}/></Link></div>
+            <div className="grid gap-6 md:grid-cols-3">{related.map((item)=><StoryCard key={item.id} article={item} compact />)}</div>
+          </div>
         </section>
       )}
 
       <NewsFooter />
-      <MobileAuraCTA href={ctaHref} label={cta.serviceName} />
     </main>
   );
 }
