@@ -1,161 +1,91 @@
 # Aura Digital Intelligence
 
-Phase 1 foundation for the AI-powered technology intelligence platform behind Aura Digital Fiji.
+Aura Digital Intelligence is the customer-acquisition publication of Aura Digital Fiji.
 
-## Strategic goal
+The commercial objective is simple:
 
-This is not designed as an AI content farm. The commercial goal is:
+**useful Fiji-focused technology intelligence → organic discovery → trust → relevant Aura Digital Fiji service → enquiry.**
 
-Global technology developments
-→ useful research
-→ Fiji/Pacific business relevance
-→ organic discovery
-→ trust
-→ Aura service enquiries.
+This project is deliberately designed to run on free infrastructure and free AI allowances without processing every incoming story with an expensive language model.
 
-## Current phase
+## Current architecture — Free Acquisition Engine v2
 
-Included:
+1. Curated RSS/source discovery runs frequently.
+2. URL normalization and duplicate protection run without generative AI.
+3. Story importance, freshness, Fiji/Pacific relevance, business relevance and Aura service fit are scored deterministically in code.
+4. Only the strongest small candidate set is sent to verification.
+5. Independent evidence is retrieved from distinct publishers.
+6. Free AI providers classify fixed claims; application code validates source indexes, derives safe facts and calculates the final confidence/verdict.
+7. APPROVED stories are drafted from verified safe facts only.
+8. Originality fingerprints detect excessive phrase overlap and can trigger an automatic rewrite.
+9. A deterministic final quality gate checks evidence, originality, SEO, Fiji usefulness and practical business value.
+10. Eligible articles are automatically published, capped at two per Fiji day.
+11. Contextual Aura service CTAs record privacy-light first-party conversion events.
 
-- Next.js App Router
-- TypeScript
-- Tailwind CSS
-- Supabase SSR authentication
-- Admin login
-- Protected newsroom dashboard
-- Phase 1 database schema
-- Source/story/research/article/job tables
-- Editorial topics
-- Aura-specific automation settings
-- Manual publishing mode by default
-- Kill switch setting by default
+## Free AI provider router
 
-Live now:
+The Worker does not require paid Cloudflare Workers AI for normal operation.
 
-- RSS/news feed ingestion
-- Duplicate protection
-- AI relevance scoring
-- Ignore / watch / research decisions
-- Autonomous research packages
-- Multi-source fact checking with APPROVE / HOLD / REJECT quality gates
+Recommended free providers:
 
-Not yet enabled:
+- `GROQ_API_KEY` — verification primary (`openai/gpt-oss-120b` by default)
+- `GEMINI_API_KEY` — article-writing primary (`gemini-2.5-flash` by default)
+- `PEXELS_API_KEY` — optional article imagery
 
-- AI article writing
-- SEO generation
-- Automatic publishing
-- Public article pages
-- Google Search Console automation
-- Social publishing
+Cloudflare Workers AI is kept only as an optional emergency fallback and is disabled by database setting by default.
 
-Those are deliberate next phases.
+If all configured free AI providers are temporarily rate-limited or unavailable, jobs are **deferred**, not permanently failed and not downgraded to unsafe content.
 
-## Local setup
+## Public publication
 
-1. Install Node.js LTS.
-2. Create a new Supabase project.
-3. Open Supabase SQL Editor.
-4. Run `supabase/schema.sql`.
-5. Create an admin user in Supabase Authentication.
-6. Copy `.env.example` to `.env.local`.
-7. Add your Supabase URL and publishable key.
-8. Run:
+Main domain:
 
-```bash
-npm install
-npm run dev
-```
+`https://intelligence.auradigitalfiji.com`
 
-9. Open `http://localhost:3000`.
-10. Open `/admin/login`.
+Important routes:
 
-## Supabase authentication
+- `/` — publication homepage
+- `/news` — newsroom/archive
+- `/news/[slug]` — individual articles
+- `/news/topic/[slug]` — topic authority hubs
+- `/about`
+- `/editorial-standards`
+- `/fact-checking`
+- `/corrections`
+- `/ai-policy`
+- `/privacy`
+- `/contact`
+- `/authors/aura-digital-intelligence`
+- `/news-sitemap.xml`
 
-This project uses `@supabase/ssr` with cookie-based authentication. Current Supabase guidance recommends this approach for Next.js SSR applications. See:
+## Security model
 
-https://supabase.com/docs/guides/auth/server-side
+Migration `013_free_acquisition_engine_v2.sql` replaces the old "every authenticated user is an admin" RLS model with an explicit `admin_users` allow-list. Existing Supabase Auth users are snapshotted as admins when migration 013 runs; future auth accounts are not admins automatically.
 
-## Important security note
+The feed-test endpoint also validates admin membership and blocks private/local network targets before fetching RSS/Atom URLs.
 
-Do not put `SUPABASE_SECRET_KEY`, `OPENAI_API_KEY`, or `CRON_SECRET` in client-side code.
+Never expose or commit:
 
-Do not commit `.env.local`.
-
-## Next build phase
-
-The ingestion, scoring, research and verification gates are now implemented. The next stage is:
-
-1. Article writer using only verified safe facts
-2. SEO title / description / internal-link generation
-3. Final quality score
-4. Article editor / monitoring UI
-5. Public article routes
-6. Controlled automatic publishing after quality testing
-7. Search and social distribution
-
-## RSS automation block
-
-The project now includes the first autonomous ingestion pipeline:
-
-- Vercel Cron calls `/api/cron/discover` every 10 minutes.
-- Active sources with a feed URL are fetched automatically.
-- RSS and Atom entries are normalized.
-- Tracking parameters are stripped from URLs.
-- Exact repeats are skipped.
-- Cross-source/title/content duplicates are marked with `status = duplicate`.
-- New stories are stored with `status = discovered`.
-- `sources.last_checked_at` is updated after a successful source check.
-- Every discovery run is recorded in the `jobs` table.
-- `/api/cron/maintenance` removes old completed/cancelled job logs after 14 days.
-
-`automation_enabled=false` and `publishing_mode=manual` intentionally do not block RSS discovery. They are reserved for later AI/publishing stages.
-
-### Required environment variables
-
-Production requires:
-
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SECRET_KEY`
 - `CRON_SECRET`
+- `GEMINI_API_KEY`
+- `GROQ_API_KEY`
+- `PEXELS_API_KEY`
+- `.env.local`
+- Cloudflare `.dev.vars`
 
-`SUPABASE_SECRET_KEY` is server-only and must never be exposed with a `NEXT_PUBLIC_` prefix.
+## Deployment
 
-## Decision + Research stage
+Use `FREE_ACQUISITION_ENGINE_V2_SETUP.md` for the one-time controlled upgrade.
 
-Deterministic priority decisions (`ignore`, `watch`, `research`) and the preliminary autonomous research agent use Cloudflare Workers AI. Run `supabase/migrations/002_decision_research.sql` before this stage.
+## Indexing
 
-## Fact-check + verification stage
+Keep `NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED=false` until at least one or two real articles have been inspected on the production domain.
 
-Run `supabase/migrations/003_fact_check_verification.sql` before deploying the latest Worker. The verifier searches for independent coverage, retrieves evidence from distinct publishers, compares claims using structured JSON output, and stores a conservative `approve`, `hold`, or `reject` verdict. Approval requires the configured independent-source count and confidence threshold. Public auto-publishing remains off.
+When the publication is ready for discovery, change it to `true`, redeploy, verify `robots.txt` and the sitemaps, then connect the domain to Google Search Console.
 
+## Editorial principle
 
-## Fact-check retrieval v2
+The system is not designed to rewrite other publishers. It selects significant developments, verifies claims against independent evidence, writes from verified facts, adds Fiji business context and checks exact phrase overlap before publication.
 
-Independent-source verification now uses stronger GDELT multi-query discovery, publisher-domain resolution and a Jina Reader fallback for pages that cannot be cleanly fetched with plain HTTP. The verifier still requires at least two independent usable sources and the configured confidence threshold before APPROVE. See `FACT_CHECK_V2_SETUP.md`.
-
-## Fact Check Retrieval v3
-
-Browser Run is now used as a final fallback for JavaScript-mediated Google News URLs and publisher pages that ordinary fetch/Jina cannot read. The fact-check approval gate remains unchanged: multiple independent sources and the configured confidence threshold are still required.
-
-## Fact Check v5 - deterministic confidence
-
-The fact-check gate now calculates verification confidence from claim-level evidence rather than trusting the language model's self-reported confidence. Retrieval still requires independent publishers and approval remains conservative. See `FACT_CHECK_V5_SETUP.md`.
-
-## Fact Check v6
-
-v6 enforces claim-by-claim verification. It explicitly numbers research claims, requires non-empty claim checks, retries once if the structured model returns an empty claim-check array, and fails closed to HOLD if claim-level verification is still unavailable. Deterministic confidence continues to require independent evidence and now gives full support weight only to supported claims linked to at least two independent sources.
-
-## Fact Check v7 — fixed claim verification
-
-v7 is the core reliability fix. The worker no longer depends on the model producing a non-empty `claim_checks` array. Application code defines up to five fixed claim slots, validates all source indexes, repairs only missing claim slots, derives `safe_facts` from fully corroborated claims, and calculates the final confidence/verdict deterministically. The verification prompt now contains only claims plus independent evidence, not the unverified research narrative. See `FACT_CHECK_V7_FINAL_FIX.md` and `CORE_PROBLEM_REPORT.md`.
-
-## Article Writer + Publishing Engine
-
-Article Writer v1 generates drafts only from `safe_facts` belonging to APPROVED fact checks. HOLD/REJECT stories are blocked upstream and HOLD stories retry automatically on the configured schedule.
-
-Publishing Engine v1 adds a deterministic final quality gate, public `/news` and `/news/[slug]` routes, source cards, NewsArticle structured data, sitemap/robots support, scheduling, audit logs and manual/automatic publication modes. Automatic publishing intentionally defaults to `manual` until public-page quality has been observed on real approved stories. See `PUBLISHING_ENGINE_V1_SETUP.md`.
-
-## Source Network v1
-
-Source Network v1 expands discovery from a single feed to a curated multi-source network across AI, technology, cloud, web development, cybersecurity, Fiji and the wider Pacific. The scout now checks only due feeds in small staggered batches, limits first-pass backfill to recent stories, tracks per-source health, backs off after failures and can auto-disable repeatedly broken feeds. Run `supabase/migrations/011_source_network_v1.sql` after deployment. The Source Manager at `/admin/sources` shows health, next-check time, failure details and discovery counts.
+A missing article is preferable to an inaccurate or low-value article.

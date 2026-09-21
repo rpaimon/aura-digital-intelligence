@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Clock3, Radar, ShieldCheck, Sparkles } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
-import { getPublishedArticles, readingTime, siteUrl } from "@/lib/news/public";
+import { getPublishedArticles, readingTime, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 function formatDate(value: string | null) {
   if (!value) return "";
-  return new Date(value).toLocaleDateString("en-FJ", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(value).toLocaleDateString("en-FJ", { timeZone: "Pacific/Fiji", day: "numeric", month: "short", year: "numeric" });
 }
 
 export default async function NewsPage() {
@@ -28,7 +28,6 @@ export default async function NewsPage() {
   const featured = articles[0];
   const latest = articles.slice(1, 4);
   const rest = articles.slice(4);
-  const categories = Array.from(new Set(articles.map((article) => article.category).filter(Boolean))) as string[];
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#07090d] text-white">
@@ -61,7 +60,7 @@ export default async function NewsPage() {
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur sm:p-5">
                 <Sparkles className="text-lime-300" size={20} />
-                <p className="mt-3 text-sm font-black">Original reporting synthesis</p>
+                <p className="mt-3 text-sm font-black">Original analysis & synthesis</p>
                 <p className="mt-1.5 text-xs leading-5 text-white/45">Articles are written from verified facts and checked for excessive phrase overlap.</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur sm:p-5">
@@ -72,14 +71,12 @@ export default async function NewsPage() {
             </div>
           </div>
 
-          {categories.length > 0 && (
-            <div className="mt-10 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <span className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-black text-black">All intelligence</span>
-              {categories.slice(0, 8).map((category) => (
-                <span key={category} className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-bold text-white/55">{category}</span>
-              ))}
-            </div>
-          )}
+          <div className="mt-10 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Link href="/news" className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-black text-black">All intelligence</Link>
+            {TOPIC_HUBS.map((topic) => (
+              <Link key={topic.slug} href={`/news/topic/${topic.slug}`} className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-bold text-white/55 transition hover:border-lime-300/30 hover:text-lime-200">{topic.label}</Link>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -89,7 +86,7 @@ export default async function NewsPage() {
             <article className="group relative min-h-[470px] overflow-hidden rounded-[2rem] border border-white/10 bg-[#10141b] sm:min-h-[560px]">
               {featured.featured_image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={featured.featured_image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-55 transition duration-700 group-hover:scale-[1.025]" />
+                <img src={featured.featured_image_url} alt={featured.featured_image_alt || featured.title} className="absolute inset-0 h-full w-full object-cover opacity-55 transition duration-700 group-hover:scale-[1.025]" />
               ) : (
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(190,242,100,.18),transparent_34%),radial-gradient(circle_at_80%_70%,rgba(34,211,238,.12),transparent_38%),linear-gradient(135deg,#111722,#080b10)]" />
               )}

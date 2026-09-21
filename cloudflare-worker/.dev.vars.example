@@ -1,5 +1,16 @@
 # Copy to .dev.vars only for local Worker testing. Never commit .dev.vars.
-VERCEL_SCOUT_URL=https://YOUR-VERCEL-SITE.vercel.app/api/cron/discover
+VERCEL_SCOUT_URL=https://intelligence.auradigitalfiji.com/api/cron/discover
 CRON_SECRET=replace-with-your-existing-cron-secret
 SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 SUPABASE_SECRET_KEY=replace-with-your-existing-supabase-secret-key
+
+# Free AI provider router. Configure at least one; both is recommended.
+GEMINI_API_KEY=replace-with-free-google-ai-studio-key
+GROQ_API_KEY=replace-with-free-groq-key
+
+# Optional free image provider for large article images / Discover eligibility.
+PEXELS_API_KEY=replace-with-free-pexels-key
+
+# Optional model overrides.
+GEMINI_MODEL=gemini-2.5-flash
+GROQ_MODEL=openai/gpt-oss-120b

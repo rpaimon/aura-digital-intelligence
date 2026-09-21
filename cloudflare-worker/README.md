@@ -1,44 +1,41 @@
-# Aura Intelligence Cloudflare Worker
+# Aura Digital Intelligence — Free Acquisition Engine v2
 
-This Worker is the free-tier automation and intelligence layer for Aura Digital Intelligence.
+The Worker is now **deterministic first, AI last**. The objective is not maximum article volume; it is two strong Fiji-relevant technology articles per day that can earn search visibility and send qualified readers to Aura Digital Fiji.
 
-Current pipeline:
+## Pipeline
 
-1. Trigger the existing Vercel RSS Scout.
-2. Score newly discovered stories with Workers AI.
-3. Apply deterministic `ignore / watch / research` decisions.
-4. Research high-priority stories one at a time.
-5. Queue completed research packages for multi-source fact checking.
-6. Discover independent coverage using the existing GDELT / Google News / Bing News retrieval chain.
-7. Fetch distinct publisher evidence with direct HTTP / Jina / Browser Run fallbacks.
-8. Verify up to five code-defined claims against the independent evidence.
-9. Validate source references, derive safe facts, and calculate confidence in code.
-10. Save a conservative `APPROVE / HOLD` verification package to Supabase.
+1. Vercel RSS Scout discovers stories from the curated source network.
+2. New stories are scored with deterministic code: freshness, source trust, Fiji/Pacific relevance, business usefulness and Aura service relevance. **No generative AI is used here.**
+3. The best qualified story is queued for verification. The daily AI candidate cap is 8 and stops early once the daily publishable target is reached.
+4. Independent evidence is discovered through the existing GDELT / Google News / Bing News chain and fetched by direct HTTP / Jina / Browser Run fallbacks.
+5. Only this small candidate set uses generative AI for claim classification. Groq is preferred for verification, Gemini is the fallback.
+6. Deterministic code validates source indexes, derives `safe_facts`, calculates confidence and decides APPROVE/HOLD.
+7. APPROVED stories use Gemini for original article writing, with Groq fallback.
+8. Originality and final quality gates run in code.
+9. Automatic publication is capped at two articles per Fiji day.
+10. Contextual article CTAs route readers to the relevant Aura Digital Fiji service and record privacy-light conversion events.
 
-## v7 reliability rule
+## Free provider router
 
-Workers AI JSON Mode is used for evidence classification, but the model does not control the final structure or policy decision. Claim slots are defined by code. Missing model slots are repaired individually and otherwise become `unverified`. `safe_facts` are derived only from claims supported by at least two valid independent source indexes. Final confidence and approval are deterministic.
+Recommended secrets:
 
-## Required bindings / secrets
+- `GEMINI_API_KEY` — final article writing primary
+- `GROQ_API_KEY` — fact-check verification primary
+- `PEXELS_API_KEY` — optional large article imagery
 
-- Workers AI binding: `AI`
-- Browser Run binding: `BROWSER`
+Existing secrets/bindings remain:
+
 - `VERCEL_SCOUT_URL`
 - `CRON_SECRET`
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
+- `AI` binding (kept as an emergency fallback only)
+- `BROWSER` binding
 
-Optional environment variables are represented in `wrangler.jsonc`:
+Cloudflare Workers AI fallback is **disabled by default** by database setting, so the old 10,000-neuron daily allowance is not consumed unless explicitly enabled later.
 
-- `AI_MODEL`
-- `MAX_STORIES_PER_RUN`
-- `MAX_RESEARCH_PER_RUN`
-- `MAX_FACT_CHECKS_PER_RUN`
+If all configured free AI providers are temporarily unavailable or rate-limited, the job is deferred and retried later. It does not consume a real attempt and it does not publish a lower-quality substitute.
 
-Run the existing verification migrations in order, then use `supabase/migrations/008_fact_check_v7_fixed_claim_retry.sql` to retry qualifying HOLD stories after v7 is live.
+## Deployment
 
-Public automatic publishing remains disabled. Only stories that pass the verification gate should later be eligible for the article writer.
-
-## Publishing Engine v1
-
-The Worker now also runs a deterministic final article quality gate after writing. It checks the upstream APPROVE fact check, confidence threshold, verified source count, safe facts, writer score, article length, SEO fields, source section and placeholder text. It then processes due scheduled publications; fully automatic publication only runs when the database setting `publishing_mode` is `automatic`.
+See `FREE_ACQUISITION_ENGINE_V2_SETUP.md` in the project root. Migration `013_free_acquisition_engine_v2.sql` is required before enabling the new Worker.

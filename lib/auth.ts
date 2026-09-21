@@ -9,5 +9,10 @@ export async function requireAdmin() {
     redirect("/admin/login");
   }
 
+  const { data: isAdmin, error: adminError } = await supabase.rpc("is_newsroom_admin");
+  if (adminError || isAdmin !== true) {
+    redirect("/");
+  }
+
   return data.user;
 }

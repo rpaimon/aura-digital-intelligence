@@ -1,18 +1,38 @@
 import type { MetadataRoute } from "next";
-import { getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED !== "true") return [];
   const base = siteUrl();
   const articles = await getPublishedArticles(1000);
+  const staticPages = [
+    "",
+    "/news",
+    "/about",
+    "/editorial-standards",
+    "/fact-checking",
+    "/corrections",
+    "/ai-policy",
+    "/privacy",
+    "/contact",
+    "/authors/aura-digital-intelligence",
+  ];
   return [
-    { url: base, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
-    { url: `${base}/news`, lastModified: new Date(), changeFrequency: "hourly", priority: 0.9 },
+    ...staticPages.map((path, index) => ({
+      url: `${base}${path}`,
+      changeFrequency: path === "/news" ? ("hourly" as const) : ("monthly" as const),
+      priority: index === 0 ? 1 : path === "/news" ? 0.95 : 0.55,
+    })),
+    ...TOPIC_HUBS.map((topic) => ({
+      url: `${base}/news/topic/${topic.slug}`,
+      changeFrequency: "daily" as const,
+      priority: 0.75,
+    })),
     ...articles.map((article) => ({
       url: `${base}/news/${article.slug}`,
       lastModified: new Date(article.updated_at || article.published_at || article.created_at),
       changeFrequency: "weekly" as const,
-      priority: 0.8,
+      priority: 0.85,
     })),
   ];
 }
