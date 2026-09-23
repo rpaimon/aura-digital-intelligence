@@ -94,12 +94,11 @@ export function NewsFooter() {
             </div>
             <div>
               <p className="text-xs font-black uppercase tracking-[0.14em] text-white">Editorial trust</p>
-              <p className="mt-4 text-sm leading-7 text-white/48">Independent-source verification, originality controls and published editorial standards protect what reaches publication.</p>
+              <p className="mt-4 text-sm leading-7 text-white/48">Independent-source verification, originality checks and published editorial standards protect what reaches publication.</p>
               <div className="mt-5 flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-[0.1em] text-white/52">
                 <Link href="/editorial-standards" className="hover:text-white">Standards</Link>
                 <Link href="/fact-checking" className="hover:text-white">Fact checking</Link>
                 <Link href="/corrections" className="hover:text-white">Corrections</Link>
-                <Link href="/ai-policy" className="hover:text-white">Technology policy</Link>
                 <Link href="/privacy" className="hover:text-white">Privacy</Link>
               </div>
             </div>

@@ -4177,7 +4177,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2-framer-v1-stable",
+          "free-acquisition-engine-v2-clean-master",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4244,7 +4244,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2-framer-v1-stable",
+        "free-acquisition-engine-v2-clean-master",
 
       endpoints: [
         "GET /health",

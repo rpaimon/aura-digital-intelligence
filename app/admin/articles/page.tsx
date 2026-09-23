@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { publishArticle, setPublishingMode, unpublishArticle } from "./actions";
 import { ScheduleForm } from "./schedule-form";
+import { articlePath } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
@@ -182,7 +183,7 @@ export default async function ArticlesPage() {
                     )}
                     {row.final_quality_passed && row.originality_passed && row.status !== "published" && <ScheduleForm articleId={row.id} />}
                     {row.status === "published" && (
-                      <><Link href={`/news/${row.slug}`} target="_blank" className="rounded-xl bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800">View live</Link><form action={unpublishArticle}><input type="hidden" name="articleId" value={row.id} /><button className="rounded-xl border border-red-200 px-4 py-2.5 text-xs font-black text-red-700">Unpublish</button></form></>
+                      <><Link href={articlePath({ title: row.title, slug: row.slug })} target="_blank" className="rounded-xl bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800">View live</Link><form action={unpublishArticle}><input type="hidden" name="articleId" value={row.id} /><button className="rounded-xl border border-red-200 px-4 py-2.5 text-xs font-black text-red-700">Unpublish</button></form></>
                     )}
                     {row.stories?.source_url && <a href={row.stories.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-2 py-2 text-xs font-black text-gray-600">Original story <ExternalLink size={12} /></a>}
                   </div>

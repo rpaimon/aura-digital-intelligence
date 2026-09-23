@@ -1,128 +1,82 @@
-# Aura Digital Intelligence — Master Project
+# Aura Digital Intelligence — Clean Master
 
-This repository is the production master for **Aura Digital Intelligence** at `https://intelligence.auradigitalfiji.com`.
+This repository is the production master for **Aura Digital Intelligence**, the technology publication and customer-acquisition engine of Aura Digital Fiji.
 
-## Design freeze
+## Design baseline
 
-The public layout is the **Framer Newsroom Rebuild v1** design. Do not redesign or replace the public layout unless explicitly requested. Functional changes should preserve the existing structure, spacing, typography, colors, navigation, cards, article layout and responsive behavior.
+The public layout/design is the **Framer Newsroom Rebuild v1** baseline. This clean-master pass does **not** redesign the homepage, news archive, article layout, mobile layout, typography, colors, spacing, or navigation structure.
 
-## Current production architecture
+## Production architecture
 
-The newsroom uses a deterministic-first, AI-last pipeline designed to operate on free infrastructure and free AI allowances:
+- Next.js 16 / React 19 on Vercel
+- Supabase/Postgres for newsroom data and admin authentication
+- Cloudflare Worker cron/orchestration
+- Deterministic story scoring (zero AI for routine scoring)
+- Groq + Gemini free-provider routing for the small number of stories that reach verification/writing
+- Cloudflare Workers AI disabled as the normal fallback by default
+- Independent-source fact checking and deterministic confidence
+- Evidence-bounded article writing from verified safe facts
+- Originality/copyright phrase-overlap guard
+- Deterministic final publication quality gate
+- Source-health monitoring and deduplication
+- Automatic publishing target capped at two articles per Fiji day
+- First-party Aura Digital Fiji conversion tracking
+- Google News sitemap, sitemap.xml, NewsArticle structured data, canonical URLs, RSS and topic hubs
 
-1. Curated RSS/Atom discovery and source-health monitoring.
-2. URL normalization and duplicate protection.
-3. Deterministic scoring for freshness, source trust, Fiji/Pacific relevance, business relevance and Aura service relevance.
-4. Only the strongest candidates proceed to independent evidence retrieval.
-5. Fixed-claim verification uses free AI providers through a provider router.
-6. Application code validates evidence references and calculates confidence/verdict.
-7. APPROVED stories are written from verified safe facts only.
-8. Originality fingerprints block excessive phrase overlap and can trigger a rewrite.
-9. Deterministic final quality gate checks evidence, originality, SEO and practical usefulness.
-10. Eligible articles can publish automatically, capped at two per Fiji day.
-11. Contextual Aura Digital Fiji links use first-party conversion tracking.
+## Important environment variables
 
-## Free AI provider router
-
-Cloudflare Workers AI is **not required** for normal operation.
-
-Recommended Worker secrets:
-
-- `GROQ_API_KEY` — verification provider
-- `GEMINI_API_KEY` — article-writing provider
-- `PEXELS_API_KEY` — optional editorial imagery
-- `CRON_SECRET`
-- `SUPABASE_URL`
-- `SUPABASE_SECRET_KEY`
-- `VERCEL_SCOUT_URL`
-
-Cloudflare AI remains an optional emergency fallback and is disabled by default. Provider quota/rate-limit errors defer jobs instead of permanently failing them.
-
-## Vercel environment variables
-
-Required production variables:
+### Vercel
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SECRET_KEY`
-- `CRON_SECRET`
 - `NEXT_PUBLIC_SITE_URL=https://intelligence.auradigitalfiji.com`
-- `NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED=false` while the publication is still being reviewed
+- `NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED=false` until launch review is complete
+- `CRON_SECRET` if used by the Vercel cron endpoints
 
-Never commit `.env.local` or any API key.
+### Cloudflare Worker secrets/bindings
 
-## Cloudflare schedule
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `VERCEL_SCOUT_URL`
+- `CRON_SECRET`
+- `GEMINI_API_KEY`
+- `GROQ_API_KEY`
+- `PEXELS_API_KEY` (optional)
+- `AI` binding (optional fallback only)
+- `BROWSER` binding
 
-The production Worker runs on:
-
-```text
-*/15 * * * *
-```
-
-The Worker processes approved writer jobs first, then discovery/scoring, candidate verification, quality gating and publishing.
-
-## Database
-
-Keep all files in `supabase/migrations/`. They are deployment history and should not be deleted even after they have been run.
-
-Migration `013_free_acquisition_engine_v2.sql` contains the current acquisition-engine/security upgrade, including:
-
-- explicit newsroom admin allow-list
-- hardened RLS policies
-- conversion tracking
-- AI defer/retry fields
-- article image attribution
-- deterministic-first settings
-- two-article daily target
+Never commit `.env.local`, `.dev.vars`, API keys, Supabase service-role keys, or cron secrets.
 
 ## Security
 
-- Admin routes require authenticated membership in `admin_users`.
-- Feed testing blocks private/local targets and unsafe redirects.
-- Service-role keys are server/Worker-only.
-- Public article reads expose published content only.
-- CTA click tracking is server-side and never blocks the destination.
+The project is pinned to Next.js `16.3.3`; the lockfile currently resolves React/React DOM `19.3.0`. Security response headers are configured in `next.config.ts`.
 
-## Public SEO/news infrastructure
+Migration `013_free_acquisition_engine_v2.sql` replaces the old permissive authenticated-user RLS model with an explicit `admin_users` allow-list. The feed-test endpoint validates newsroom admin membership and blocks local/private-network targets to reduce SSRF risk.
 
-- Canonical article URLs use clean SEO slugs.
-- Existing stored legacy slugs remain resolvable and redirect to the clean public path.
-- `NewsArticle` structured data is emitted on article pages.
-- `/sitemap.xml` and `/news-sitemap.xml` use public clean article paths.
-- `/rss.xml` uses public clean article paths.
-- Topic hubs support AI, cybersecurity, cloud, business technology, ecommerce, and Fiji/Pacific coverage.
-- Prominent public UI emphasizes verification, originality and editorial accountability; implementation details remain documented in the technology-use policy.
+## Public URL behavior
 
-## Important editorial rules
+Public articles use readable SEO slugs derived from the title. Old stored slugs remain resolvable and redirect to the clean public path, so existing links continue to work.
 
-- Event-specific factual statements must come from verified safe facts.
-- Source names are not permission to invent or infer additional facts.
-- Fiji implications must be framed as analysis/advice unless independently verified.
-- A short accurate article is preferred over padded or invented detail.
-- HOLD/REJECT stories do not enter the writer.
-- Originality and final quality gates must pass before publishing.
+## Editorial/public trust
 
-## Main commands
+Public pages emphasize independent sourcing, originality and editorial standards. A separate `/ai-policy` remains available for transparency without advertising production mechanics throughout the publication.
 
-```bash
-npm install
-npm run dev
-npm run build
-```
+## Database migrations
 
-Cloudflare Worker:
+Migrations are stored in `supabase/migrations/` and must be kept in sequence. `supabase/bootstrap.sql` is only for a brand-new Supabase project; the production project should receive only new migrations. `014_clean_master_editorial_copy.sql` only updates the public organization-author bio and is safe to run after 013.
 
-```bash
-cd cloudflare-worker
-npm install
-npm run dev
-npm run deploy
-```
+## Deployment
 
-## Current Worker health stage
+1. Keep your existing local `.git` and `.env.local`.
+2. Replace source files with this clean master.
+3. Run `npm install` (or `npm ci`) locally.
+4. Run `npm run build`.
+5. Run migration `014_clean_master_editorial_copy.sql` in Supabase.
+6. Commit and push to GitHub; wait for Vercel Ready.
+7. Replace the live Cloudflare `worker.js` with `cloudflare-worker/src/index.ts` only if the Worker file changed from your live version.
+8. `/health` should report `free-acquisition-engine-v2-clean-master`.
 
-Expected `/health` stage after deploying the Worker in this master:
+## Launch indexing
 
-```text
-free-acquisition-engine-v2-framer-v1-stable
-```
+Keep `NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED=false` while reviewing output. When ready for Google Search/News discovery, change it to `true`, redeploy, verify `/robots.txt`, `/sitemap.xml`, `/news-sitemap.xml`, and then submit the domain in Google Search Console.

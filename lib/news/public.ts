@@ -65,15 +65,7 @@ export function seoSlugFromTitle(value: string) {
 }
 
 export function publicSlugForArticle(article: Pick<PublicArticle, "title" | "slug">) {
-  const base = seoSlugFromTitle(article.title);
-  const stored = String(article.slug || "").trim();
-  if (!base) return stored || "story";
-  // New writer slugs are either the clean base or base + a 6-char collision suffix.
-  // Preserve those stable unique URLs, but hide legacy UUID-style 8-char suffixes.
-  if (stored === base || new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-[a-f0-9]{6}$`).test(stored)) {
-    return stored;
-  }
-  return base;
+  return seoSlugFromTitle(article.title) || article.slug;
 }
 
 export function articlePath(article: Pick<PublicArticle, "title" | "slug">) {

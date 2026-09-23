@@ -10,7 +10,7 @@ const cards = [
   { icon: Globe2, title: "Fiji-first perspective", text: "We are interested in people who understand how global technology actually lands in Fiji and the Pacific." },
   { icon: ShieldCheck, title: "Evidence before hype", text: "Good reporting beats fast speculation. Sources, context and accuracy matter." },
   { icon: Laptop2, title: "Remote by default", text: "Digital collaboration lets contributors work from anywhere while serving a Fiji-focused audience." },
-  { icon: Sparkles, title: "Editorial systems", text: "We use modern tooling to reduce repetitive work while keeping evidence and editorial standards strict." },
+  { icon: Sparkles, title: "Smart workflows", text: "We use modern publishing tools to reduce repetitive work while keeping editorial standards high." },
 ];
 
 export default function CareerPage() {

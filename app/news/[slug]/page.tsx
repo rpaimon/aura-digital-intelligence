@@ -18,13 +18,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!article) return { title: "Article not found" };
   const canonical = canonicalArticleUrl(article);
   const title = article.seo_title || article.title;
-  const description = article.seo_description || article.excerpt || "Technology intelligence from Aura Digital Intelligence.";
-  const image = article.featured_image_url || `${siteUrl()}/news/${article.slug}/opengraph-image`;
+  const description = article.seo_description || article.excerpt || "Verified technology intelligence from Aura Digital Intelligence.";
+  const image = article.featured_image_url || `${canonical}/opengraph-image`;
   return {
     title,
     description,
     alternates: { canonical },
-    openGraph: { type: "article", title, description, url: canonical, publishedTime: article.published_at || undefined, modifiedTime: article.updated_at || undefined, section: displayCategory(article), images: [{ url: image, width: 1200, height: 630, alt: article.featured_image_alt || article.title }] },
+    openGraph: { type: "article", title, description, url: canonical, publishedTime: article.published_at || undefined, modifiedTime: article.updated_at || undefined, section: article.category || undefined, images: [{ url: image, width: 1200, height: 630, alt: article.featured_image_alt || article.title }] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }
@@ -38,16 +38,17 @@ export default async function ArticlePage({ params }: { params: Params }) {
   const { slug } = await params;
   const article = await getPublishedArticleBySlug(slug);
   if (!article) notFound();
-  const cleanPath = articlePath(article);
-  if (`/news/${slug}` !== cleanPath) redirect(cleanPath);
+
+  const publicPath = articlePath(article);
+  if (`/news/${slug}` !== publicPath) redirect(publicPath);
 
   const content = stripSourcesSection(article.content);
   const sources = article.article_sources ?? [];
-  const related = await getRelatedArticles(article.id, displayCategory(article), 3);
+  const related = await getRelatedArticles(article.id, article.category, 3);
   const latest = await getPublishedArticles(4);
   const cta = auraServiceForArticle(article);
   const canonical = canonicalArticleUrl(article);
-  const image = article.featured_image_url || `${siteUrl()}/news/${article.slug}/opengraph-image`;
+  const image = article.featured_image_url || `${canonical}/opengraph-image`;
   const authorName = article.authors?.name || "Aura Intelligence Desk";
   const authorSlug = article.authors?.slug || "aura-digital-intelligence";
   const category = displayCategory(article);
@@ -116,7 +117,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
                 <div className="mt-5 grid gap-3">
                   {sources.map((source, index) => (
                     <a key={source.id} href={source.source_url} target="_blank" rel="noreferrer noopener" className="group flex items-start justify-between gap-4 border border-white/12 bg-[#0c0c0c] p-5 transition hover:bg-white hover:text-black">
-                      <div><p className="text-[9px] font-black uppercase tracking-[0.15em] opacity-60">Source {String(index + 1).padStart(2, "0")} · {source.source_name}</p><p className="mt-2 text-sm font-semibold leading-6 opacity-80">{source.citation_text || "Independent reporting used for verification."}</p></div><ExternalLink size={15} className="mt-1 shrink-0 opacity-40" />
+                      <div><p className="text-[9px] font-black uppercase tracking-[0.15em] opacity-60">Source {String(index + 1).padStart(2, "0")} · {source.source_name}</p><p className="mt-2 text-sm font-semibold leading-6 opacity-80">{source.citation_text || "Independent reporting used by the verification pipeline."}</p></div><ExternalLink size={15} className="mt-1 shrink-0 opacity-40" />
                     </a>
                   ))}
                 </div>
@@ -130,7 +131,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
               <div className="mt-5 space-y-4 text-xs leading-6 text-white/46">
                 <div className="border-b border-white/10 pb-4"><p className="font-black uppercase tracking-[0.06em] text-white/80">Independent verification</p><p className="mt-1">Evidence-linked claims must clear the newsroom gate before publication.</p></div>
                 <div className="border-b border-white/10 pb-4"><p className="font-black uppercase tracking-[0.06em] text-white/80">Originality protection</p><p className="mt-1">Drafts are checked for excessive exact phrase overlap.</p></div>
-                <div><p className="font-black uppercase tracking-[0.06em] text-white/80">Editorial accountability</p><p className="mt-1">Published stories follow our editorial standards and corrections policy.</p></div>
+                <div><p className="font-black uppercase tracking-[0.06em] text-white/80">Editorial accountability</p><p className="mt-1">Published stories must meet our sourcing, originality and quality standards.</p></div>
               </div>
               <Link href="/editorial-standards" className="mt-5 inline-block border-b border-white pb-1 text-[10px] font-black uppercase tracking-[0.12em]">Read our standards</Link>
             </div>
