@@ -96,7 +96,7 @@ async function getSettings(env) {
       publishingMode: "automatic",
       maxPublishPerRun: 2,
       dailyArticleTarget: 2,
-      maxAiCandidatesPerDay: 5,
+      maxAiCandidatesPerDay: 16,
       candidateMinPriority: 68,
       aiRouterEnabled: true,
       cloudflareAiFallbackEnabled: false,
@@ -174,7 +174,7 @@ async function getSettings(env) {
     publishingMode: String(map.publishing_mode ?? "automatic").replace(/^"|"$/g, "") === "automatic" ? "automatic" : "manual",
     maxPublishPerRun: Math.max(1, Math.min(4, Number(map.max_publish_per_run ?? 1) || 1)),
     dailyArticleTarget: Math.max(1, Math.min(3, Number(map.daily_article_target ?? 2) || 2)),
-    maxAiCandidatesPerDay: Math.max(2, Math.min(8, Number(map.max_ai_candidates_per_day ?? 5) || 5)),
+    maxAiCandidatesPerDay: Math.max(2, Math.min(24, Number(map.max_ai_candidates_per_day ?? 16) || 16)),
     candidateMinPriority: Math.max(50, Math.min(95, Number(map.candidate_min_priority ?? 68) || 68)),
     aiRouterEnabled: map.ai_router_enabled !== false,
     cloudflareAiFallbackEnabled: map.cloudflare_ai_fallback_enabled === true,
@@ -3291,7 +3291,7 @@ async function collectIndependentEvidence(env, story) {
 async function getDailyPipelineStats(env, settings) {
   const { start, end, key } = fijiDayBounds();
   const [checksResponse, articlesResponse, qualityResponse, publishedResponse, activeFactResponse, writerResponse] = await Promise.all([
-    sb(env, `fact_checks?select=id,verdict,confidence,checked_at&checked_at=gte.${encodeURIComponent(start)}&checked_at=lt.${encodeURIComponent(end)}&limit=80`),
+    sb(env, `fact_checks?select=id,verdict,confidence,independent_source_count,checked_at&checked_at=gte.${encodeURIComponent(start)}&checked_at=lt.${encodeURIComponent(end)}&limit=120`),
     sb(env, `articles?select=id,status,generated_at,published_at&generated_at=gte.${encodeURIComponent(start)}&generated_at=lt.${encodeURIComponent(end)}&limit=30`),
     sb(env, `articles?select=id,status,final_quality_checked_at&final_quality_passed=eq.true&final_quality_checked_at=gte.${encodeURIComponent(start)}&final_quality_checked_at=lt.${encodeURIComponent(end)}&limit=30`),
     sb(env, `articles?select=id,status,published_at&status=eq.published&published_at=gte.${encodeURIComponent(start)}&published_at=lt.${encodeURIComponent(end)}&limit=30`),
@@ -3305,10 +3305,20 @@ async function getDailyPipelineStats(env, settings) {
   const published = publishedResponse.ok ? await publishedResponse.json() : [];
   const activeFactJobs = activeFactResponse.ok ? await activeFactResponse.json() : [];
   const writerJobs = writerResponse.ok ? await writerResponse.json() : [];
+  const aiFactChecksToday = checks.filter(
+    (row) => Number(row.independent_source_count || 0) >= settings.factCheckMinSources
+  ).length;
+  const sourcePoorChecksToday = checks.length - aiFactChecksToday;
+  const verificationScanCap = Math.max(
+    24,
+    Math.min(72, settings.maxAiCandidatesPerDay * 3)
+  );
 
   return {
     fijiDate: key,
     factChecksToday: checks.length,
+    aiFactChecksToday,
+    sourcePoorChecksToday,
     approvalsToday: checks.filter((row) => row.verdict === "approve").length,
     articlesGeneratedToday: articles.length,
     qualityPassedToday: qualityPassed.length,
@@ -3317,17 +3327,44 @@ async function getDailyPipelineStats(env, settings) {
     activeWriterJobs: writerJobs.length,
     articleTarget: settings.dailyArticleTarget,
     candidateCap: settings.maxAiCandidatesPerDay,
+    verificationScanCap,
   };
+}
+
+function candidateCoverageDelayMinutes(candidate) {
+  const sourceType = String(candidate?.sources?.source_type || "").toLowerCase();
+  if (sourceType === "company" || sourceType === "government") return 75;
+  return 20;
+}
+
+function candidateAgeMinutes(candidate) {
+  const raw = candidate?.published_at || candidate?.discovered_at;
+  const timestamp = raw ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(timestamp)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, (Date.now() - timestamp) / 60000);
 }
 
 async function queueBestDailyCandidate(env, settings) {
   const stats = await getDailyPipelineStats(env, settings);
-  if (stats.articlesPublishedToday >= settings.dailyArticleTarget || stats.qualityPassedToday >= settings.dailyArticleTarget) {
-    return { queued: false, reason: "daily-publishable-target-reached", ...stats };
+
+  // The target is two actually published articles. A quality-passed draft is
+  // progress, but it must not stop acquisition before the publishing target is met.
+  if (stats.articlesPublishedToday >= settings.dailyArticleTarget) {
+    return { queued: false, reason: "daily-published-target-reached", ...stats };
   }
-  if (stats.factChecksToday >= settings.maxAiCandidatesPerDay) {
+
+  // max_ai_candidates_per_day is an AI budget. Source-poor HOLDs where the AI
+  // verifier never ran must not consume it; that was the v2/v2.1 starvation bug.
+  if (stats.aiFactChecksToday >= settings.maxAiCandidatesPerDay) {
     return { queued: false, reason: "daily-ai-candidate-cap-reached", ...stats };
   }
+
+  // Separate bounded safety valve for free source-retrieval scans. This keeps
+  // the target-driven loop from running forever on a day with no verifiable news.
+  if (stats.factChecksToday >= stats.verificationScanCap) {
+    return { queued: false, reason: "daily-verification-scan-cap-reached", ...stats };
+  }
+
   if (stats.activeWriterJobs > 0) {
     return { queued: false, reason: "writer-has-priority", ...stats };
   }
@@ -3336,12 +3373,12 @@ async function queueBestDailyCandidate(env, settings) {
   }
 
   const q = new URLSearchParams({
-    select: "id,title,priority_score,published_at,category,source_url",
+    select: "id,title,priority_score,published_at,discovered_at,category,source_url,sources(source_type)",
     decision: "eq.research",
     verification_status: "is.null",
     priority_score: `gte.${settings.candidateMinPriority}`,
     order: "priority_score.desc,published_at.desc",
-    limit: "8",
+    limit: "12",
   });
   const response = await sb(env, `stories?${q.toString()}`);
   if (!response.ok) {
@@ -3352,7 +3389,33 @@ async function queueBestDailyCandidate(env, settings) {
     return { queued: false, reason: "no-qualified-candidate", ...stats };
   }
 
-  const candidate = candidates[0];
+  // Do not burn a fresh first-party announcement into HOLD before independent
+  // publishers have had a reasonable chance to cover it. Scan the pool for the
+  // highest-priority candidate whose coverage window has matured.
+  const readyCandidates = candidates.filter(
+    (candidate) => candidateAgeMinutes(candidate) >= candidateCoverageDelayMinutes(candidate)
+  );
+
+  if (!readyCandidates.length) {
+    return {
+      queued: false,
+      reason: "waiting-for-independent-coverage",
+      waitingCandidates: candidates.length,
+      nextCandidateDelayMinutes: Math.max(
+        1,
+        Math.ceil(
+          Math.min(
+            ...candidates.map((candidate) =>
+              Math.max(0, candidateCoverageDelayMinutes(candidate) - candidateAgeMinutes(candidate))
+            )
+          )
+        )
+      ),
+      ...stats,
+    };
+  }
+
+  const candidate = readyCandidates[0];
   await enqueueFactCheck(env, candidate.id, candidate.priority_score || 70);
   await sb(env, `stories?id=eq.${encodeURIComponent(candidate.id)}`, {
     method: "PATCH",
@@ -3365,7 +3428,9 @@ async function queueBestDailyCandidate(env, settings) {
     storyId: candidate.id,
     title: candidate.title,
     priority: candidate.priority_score,
-    reason: "top-qualified-candidate",
+    sourceType: candidate?.sources?.source_type || null,
+    candidateAgeMinutes: Math.round(candidateAgeMinutes(candidate)),
+    reason: "target-driven-verification-candidate",
     ...stats,
   };
 }
@@ -4288,7 +4353,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.1-verification-lock",
+    architecture: "free-acquisition-engine-v2.2-target-driven-verification",
     staleJobsRecovered,
     discovery,
     scoredCount: decisions.length,
@@ -4336,7 +4401,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2.1-verification-lock",
+          "free-acquisition-engine-v2.2-target-driven-verification",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4403,7 +4468,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2.1-verification-lock",
+        "free-acquisition-engine-v2.2-target-driven-verification",
 
       endpoints: [
         "GET /health",
