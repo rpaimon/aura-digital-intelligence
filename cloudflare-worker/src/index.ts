@@ -2576,15 +2576,92 @@ function titleSimilarity(a, b) {
   return shared / denom;
 }
 
-function evidenceMatchesStory(text, storyTitle, candidateTitle) {
+function evidenceMatchMetrics(text, storyTitle, candidateTitle) {
   const haystack = normalizeSearchTitle(text).toLowerCase();
   const tokens = significantTitleTokens(storyTitle);
-  if (!haystack || !tokens.length) return false;
+  if (!haystack || !tokens.length) {
+    return { matches: 0, coverage: 0, titleScore: 0 };
+  }
 
   const matches = tokens.filter((token) => haystack.includes(token)).length;
-  const required = tokens.length >= 7 ? 3 : 2;
+  return {
+    matches,
+    coverage: matches / tokens.length,
+    titleScore: titleSimilarity(storyTitle, candidateTitle),
+  };
+}
 
-  return matches >= required || titleSimilarity(storyTitle, candidateTitle) >= 0.45;
+function evidenceMatchesStory(text, storyTitle, candidateTitle) {
+  const metrics = evidenceMatchMetrics(text, storyTitle, candidateTitle);
+  const tokenCount = significantTitleTokens(storyTitle).length;
+  if (!tokenCount) return false;
+
+  // Verification evidence must match the same event, not merely the same broad
+  // topic. Candidate titles already pass a light discovery filter; this second
+  // gate requires either a strong title match or a meaningful title+body match.
+  const bodyMatchFloor = tokenCount >= 8 ? 4 : tokenCount >= 5 ? 3 : 2;
+  const strongBodyMatch =
+    metrics.matches >= bodyMatchFloor &&
+    metrics.coverage >= (tokenCount >= 8 ? 0.4 : 0.5);
+
+  return (
+    metrics.titleScore >= 0.34 ||
+    (metrics.titleScore >= 0.22 && strongBodyMatch)
+  );
+}
+
+function relevantEvidenceExcerpt(text, storyTitle, candidateTitle, maxChars = 5000) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean || clean.length <= maxChars) return clean;
+
+  const storyTokens = new Set(significantTitleTokens(storyTitle));
+  const candidateTokens = new Set(significantTitleTokens(candidateTitle));
+  const sentences = sentenceCandidates(clean);
+
+  if (!sentences.length || !storyTokens.size) return clean.slice(0, maxChars);
+
+  let bestIndex = 0;
+  let bestScore = -1;
+
+  for (let i = 0; i < sentences.length; i += 1) {
+    const tokens = significantTitleTokens(sentences[i]);
+    if (!tokens.length) continue;
+    const storyOverlap = tokens.filter((token) => storyTokens.has(token)).length;
+    const candidateOverlap = tokens.filter((token) => candidateTokens.has(token)).length;
+    const score = storyOverlap * 3 + candidateOverlap;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+
+  const selected = [];
+  let chars = 0;
+  let left = bestIndex;
+  let right = bestIndex + 1;
+
+  while (chars < maxChars && (left >= 0 || right < sentences.length)) {
+    if (left >= 0) {
+      const sentence = sentences[left];
+      if (chars + sentence.length + 1 <= maxChars) {
+        selected.unshift(sentence);
+        chars += sentence.length + 1;
+      }
+      left -= 1;
+    }
+
+    if (right < sentences.length && chars < maxChars) {
+      const sentence = sentences[right];
+      if (chars + sentence.length + 1 <= maxChars) {
+        selected.push(sentence);
+        chars += sentence.length + 1;
+      }
+      right += 1;
+    }
+  }
+
+  const excerpt = selected.join(" ").trim();
+  return excerpt || clean.slice(0, maxChars);
 }
 
 async function gdeltSearchQuery(query, timespan = "1month", maxRecords = 20) {
@@ -3189,7 +3266,12 @@ async function collectIndependentEvidence(env, story) {
       similarity:
         finalCandidate.similarity ??
         Math.round(titleSimilarity(story.title, finalCandidate.title) * 100),
-      excerpt: fetched.text.slice(0, 5000),
+      excerpt: relevantEvidenceExcerpt(
+        fetched.text,
+        story.title,
+        finalCandidate.title,
+        5000
+      ),
     });
   }
 
@@ -3366,48 +3448,119 @@ function sentenceCandidates(value) {
     .filter((item) => !/^(click|subscribe|sign up|advertisement|cookie|privacy|terms)\b/i.test(item));
 }
 
-function buildDeterministicClaims(story, sourceText = "") {
+function trimClaimToAtomicCore(value) {
+  let claim = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\([^)]{0,160}\)/g, " ")
+    .replace(/^[-–—:;,.\s]+|[-–—:;,\s]+$/g, "")
+    .trim();
+
+  // Deterministically remove trailing explanatory clauses when the leading
+  // clause is already a complete, useful factual assertion. We intentionally do
+  // not split on ordinary "and" because doing so can change meaning.
+  const separators = [";", " — ", " – ", " which ", " while "];
+  for (const separator of separators) {
+    const index = claim.toLowerCase().indexOf(separator.trim() === separator ? separator : separator.toLowerCase());
+    if (index > 45) {
+      const leading = claim.slice(0, index).trim().replace(/[,:-]+$/g, "");
+      if (leading.length >= 35 && significantTitleTokens(leading).length >= 4) {
+        claim = leading;
+        break;
+      }
+    }
+  }
+
+  return claim.slice(0, 240).trim();
+}
+
+function heuristicClaimEvidenceSupport(claim, evidence) {
+  const claimTokens = significantTitleTokens(claim);
+  if (!claimTokens.length) return { sourceCount: 0, averageCoverage: 0 };
+
+  let sourceCount = 0;
+  let coverageTotal = 0;
+
+  for (const source of evidence || []) {
+    const haystack = normalizeSearchTitle(`${source?.title || ""} ${source?.excerpt || ""}`).toLowerCase();
+    if (!haystack) continue;
+    const shared = claimTokens.filter((token) => haystack.includes(token)).length;
+    const coverage = shared / claimTokens.length;
+    const titleScore = titleSimilarity(claim, source?.title || "");
+
+    if ((shared >= 3 && coverage >= 0.45) || titleScore >= 0.34) {
+      sourceCount += 1;
+      coverageTotal += coverage;
+    }
+  }
+
+  return {
+    sourceCount,
+    averageCoverage: sourceCount ? coverageTotal / sourceCount : 0,
+  };
+}
+
+function buildDeterministicClaims(story, sourceText = "", evidence = []) {
   const title = normalizeSearchTitle(story?.title || "");
   const description = String(story?.description || "").replace(/\s+/g, " ").trim();
   const titleTokens = new Set(significantTitleTokens(title));
   const candidates = [];
 
   if (title.length >= 20) candidates.push(title);
-  candidates.push(...sentenceCandidates(description).slice(0, 3));
+  candidates.push(...sentenceCandidates(description).slice(0, 4));
 
   // Pull only original-source sentences that clearly overlap the headline topic.
-  // This replaces the expensive AI research stage; it does not treat the source
-  // as verified. Independent publishers still have to corroborate every claim.
-  for (const sentence of sentenceCandidates(String(sourceText || "").slice(0, 4500))) {
+  // The original source remains unverified input; independent publishers below
+  // determine which candidate claims are suitable for verification.
+  for (const sentence of sentenceCandidates(String(sourceText || "").slice(0, 6500))) {
     const tokens = significantTitleTokens(sentence);
     const overlap = tokens.filter((token) => titleTokens.has(token)).length;
     if (overlap >= Math.min(2, Math.max(1, titleTokens.size))) candidates.push(sentence);
-    if (candidates.length >= 10) break;
+    if (candidates.length >= 14) break;
   }
 
+  const deduped = [];
   const seen = new Set();
-  const claims = [];
   for (const raw of candidates) {
-    const claim = String(raw || "")
-      .replace(/\s+/g, " ")
-      .replace(/^[-–—:;,.\s]+|[-–—:;,\s]+$/g, "")
-      .trim();
-    if (claim.length < 20 || claim.length > 320) continue;
-    const key = claim.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const claim = trimClaimToAtomicCore(raw);
+    const tokens = significantTitleTokens(claim);
+    if (claim.length < 20 || claim.length > 240 || tokens.length < 3 || tokens.length > 28) continue;
+
+    const key = normalizeSearchTitle(claim).toLowerCase();
     if (!key || seen.has(key)) continue;
-    if (claims.some((existing) => {
-      const a = significantTitleTokens(existing);
-      const b = significantTitleTokens(claim);
-      if (!a.length || !b.length) return false;
-      const overlap = a.filter((token) => b.includes(token)).length / Math.min(a.length, b.length);
-      return overlap > 0.9;
+    if (deduped.some((existing) => {
+      const a = significantTitleTokens(existing.claim);
+      const b = tokens;
+      const overlap = a.filter((token) => b.includes(token)).length / Math.max(1, Math.min(a.length, b.length));
+      return overlap > 0.88;
     })) continue;
+
     seen.add(key);
-    claims.push(claim);
-    if (claims.length >= 3) break;
+    const support = heuristicClaimEvidenceSupport(claim, evidence);
+    deduped.push({
+      claim,
+      sourceCount: support.sourceCount,
+      averageCoverage: support.averageCoverage,
+      headlineSimilarity: titleSimilarity(title, claim),
+    });
   }
 
-  return claims.length ? claims : [title || "The reported technology development occurred as described by the source headline."];
+  // Prefer claims whose factual core appears across at least two independent
+  // publishers. This is only candidate selection; Groq still performs semantic
+  // verification and the deterministic 75-point gate still decides approval.
+  deduped.sort((a, b) =>
+    b.sourceCount - a.sourceCount ||
+    b.averageCoverage - a.averageCoverage ||
+    b.headlineSimilarity - a.headlineSimilarity ||
+    a.claim.length - b.claim.length
+  );
+
+  const strong = deduped.filter((item) => item.sourceCount >= 2);
+  const pool = strong.length ? strong : deduped;
+  const claims = pool.slice(0, 3).map((item) => item.claim);
+
+  return claims.length
+    ? claims
+    : [title || "The reported technology development occurred as described by the source headline."];
 }
 
 function normalizeSourceIndexes(values, evidenceCount) {
@@ -3512,7 +3665,7 @@ async function repairSingleClaim(env, settings, claim, evidenceText, claimNumber
     env,
     settings,
     "verification",
-    "Verify exactly one factual claim against only the supplied independent evidence. Use only source numbers present in the evidence. Full support requires two independent publishers. If support is insufficient, return unverified.",
+    "Verify exactly one factual claim against only the supplied independent evidence. Use only source numbers present in the evidence. Full support requires two independent publishers supporting the same essential factual assertion. Minor wording differences are acceptable; material factual differences are not. If support is insufficient, return unverified.",
     `CLAIM ${claimNumber}: ${claim}\n\nEVIDENCE:\n${evidenceText.slice(0, 10000)}`,
     buildSingleClaimSchema(),
     { maxTokens: 400, temperature: 0 }
@@ -3822,7 +3975,7 @@ async function factCheckStory(env, job, settings) {
       };
     }
 
-    const claimsToVerify = buildDeterministicClaims(story, originalText);
+    const claimsToVerify = buildDeterministicClaims(story, originalText, evidence);
     const numberedClaims = claimsToVerify
       .map((claim, index) => `CLAIM ${index + 1}: ${claim}`)
       .join("\n");
@@ -3831,8 +3984,10 @@ async function factCheckStory(env, job, settings) {
 Verify each numbered claim using ONLY the independent evidence below.
 
 Rules:
-- supported = at least TWO independent SOURCE numbers directly support the whole claim
-- partial = one source supports it, or multiple sources support only part of it
+- supported = at least TWO independent SOURCE numbers directly support the claim's essential factual assertion (same material entity, action, object/result, and material qualifiers)
+- minor wording differences do not prevent support when the material factual assertion is the same
+- if a claim contains multiple material assertions and two sources do not support all of them, mark partial
+- partial = one source supports it, or multiple sources support only part of the material assertion
 - conflicted = credible sources materially disagree
 - unverified = the supplied evidence does not support it
 - Do not treat the original story as independent evidence.
@@ -3880,7 +4035,9 @@ INDEPENDENT EVIDENCE (${evidence.length} publishers):\n${evidenceText.slice(0, 1
       status: "completed",
       result: {
         ...saved,
-        factCheckEngine: "free-v2-deterministic-claims",
+        factCheckEngine: "free-v2.1-atomic-evidence-claims",
+        claimStrategy: "atomic-evidence-ranked",
+        verificationClaims: claimsToVerify,
         provider,
         model,
         claimRepairCount,
@@ -3900,7 +4057,9 @@ INDEPENDENT EVIDENCE (${evidence.length} publishers):\n${evidenceText.slice(0, 1
       storyId: story.id,
       title: normalizeSearchTitle(story.title),
       ...saved,
-      factCheckEngine: "free-v2-deterministic-claims",
+      factCheckEngine: "free-v2.1-atomic-evidence-claims",
+      claimStrategy: "atomic-evidence-ranked",
+      verificationClaims: claimsToVerify,
       provider,
       model,
       claimRepairCount,
@@ -4069,16 +4228,16 @@ async function runCycle(env) {
     }
   }
 
+  // A due HOLD retry gets first chance at the verification slot. This prevents
+  // a newly discovered candidate from starving the single bounded retry.
+  const holdRetriesQueued = await queueDueHoldRetries(env, thresholds);
+
   let dailyCandidate = null;
   try {
     dailyCandidate = await queueBestDailyCandidate(env, thresholds);
   } catch (e) {
     failures.push({ stage: "daily-candidate-selector", error: e instanceof Error ? e.message : String(e) });
   }
-
-  // HOLD retries are disabled by default in the free acquisition architecture.
-  // If an operator explicitly re-enables them, the existing bounded scheduler remains available.
-  const holdRetriesQueued = await queueDueHoldRetries(env, thresholds);
 
   const factCheckJobs = await getQueuedFactCheckJobs(env, thresholds.maxFactChecks);
   const factChecked = [];
@@ -4129,7 +4288,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2",
+    architecture: "free-acquisition-engine-v2.1-verification-lock",
     staleJobsRecovered,
     discovery,
     scoredCount: decisions.length,
@@ -4177,7 +4336,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2-clean-master",
+          "free-acquisition-engine-v2.1-verification-lock",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4244,7 +4403,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2-clean-master",
+        "free-acquisition-engine-v2.1-verification-lock",
 
       endpoints: [
         "GET /health",
