@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Rss, ShieldCheck } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
-import { NumberedPick, SectionHeading, StoryCard, categoryColor, formatNewsDate } from "@/components/public-news/framagz-ui";
-import { articleFallbackImage, articlePath, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { NumberedPick, SectionHeading, StoryCard, StoryRow, CategoryChip, formatNewsDate } from "@/components/public-news/framagz-ui";
+import { articleFallbackImage, articlePath, auraServiceForArticle, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
@@ -14,115 +14,148 @@ export const metadata: Metadata = {
   openGraph: { type: "website", title: "Aura Digital Intelligence", description: "Technology news and business intelligence for Fiji and the Pacific.", url: siteUrl() },
 };
 
-function topicArticles(articles: Awaited<ReturnType<typeof getPublishedArticles>>, matcher: RegExp, limit = 3) {
+function topicArticles(articles: Awaited<ReturnType<typeof getPublishedArticles>>, matcher: RegExp, limit = 4) {
   return articles.filter((a) => matcher.test(`${a.category || ""} ${a.title} ${a.excerpt || ""}`.toLowerCase())).slice(0, limit);
 }
 
-function HotSection({ title, href, articles, accent }: { title: string; href: string; articles: Awaited<ReturnType<typeof getPublishedArticles>>; accent: string }) {
+function TopicBlock({ title, href, articles }: { title: string; href: string; articles: Awaited<ReturnType<typeof getPublishedArticles>> }) {
   if (!articles.length) return null;
+  const [feature, ...rest] = articles;
   return (
-    <section className="adi-reveal">
-      <SectionHeading title={`What's hot in ${title}`} href={href} accent={accent} />
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {articles.map((article) => <StoryCard key={article.id} article={article} compact />)}
+    <section className="adi-reveal adi-panel p-4 sm:p-5">
+      <SectionHeading eyebrow="Topic desk" title={title} href={href} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)]">
+        <StoryCard article={feature} compact />
+        <div className="space-y-3">
+          {rest.map((article) => <StoryRow key={article.id} article={article} showExcerpt={false} />)}
+        </div>
       </div>
     </section>
+  );
+}
+
+function AuraPanel({ leadTitle }: { leadTitle?: string }) {
+  const cta = auraServiceForArticle({ title: leadTitle || "", category: "Technology", excerpt: "" });
+  return (
+    <div className="adi-panel overflow-hidden p-6 text-white sm:p-7">
+      <p className="adi-kicker">Powered by Aura Digital Fiji</p>
+      <h3 className="mt-3 text-2xl font-black tracking-[-0.05em]">Need help applying these trends to your business?</h3>
+      <p className="mt-3 text-sm leading-7 text-white/52">Aura Digital Fiji builds websites, ecommerce, mobile apps, business email, IT systems and website security for businesses in Fiji.</p>
+      <a href="https://auradigitalfiji.com" className="mt-5 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-white">Visit Aura Digital Fiji <ArrowUpRight size={13}/></a>
+      <div className="mt-6 border-t border-white/10 pt-4 text-xs text-white/45">Popular service: <span className="font-bold text-white/75">{cta.serviceName}</span></div>
+    </div>
   );
 }
 
 export default async function Home() {
   const articles = await getPublishedArticles(60);
   const lead = articles[0];
-  const happenings = articles.slice(1, 5);
-  const staffPicks = articles.slice(0, 3);
+  const sideLead = articles.slice(1, 5);
+  const latestRows = articles.slice(5, 11);
+  const staffPicks = articles.slice(0, 4);
   const ai = topicArticles(articles, /\bai\b|artificial intelligence|machine learning|gemini|openai|anthropic/);
   const cyber = topicArticles(articles, /cyber|security|privacy|phishing|ransomware|hack/);
   const business = topicArticles(articles, /business|commerce|payment|retail|productivity|digital transformation/);
   const fiji = topicArticles(articles, /fiji|pacific|samoa|tonga|vanuatu|papua new guinea/);
 
   return (
-    <main className="min-h-screen bg-[#070707] text-white">
+    <main className="min-h-screen bg-[#07090d] text-white">
       <NewsHeader />
 
       <section className="adi-noise border-b border-white/10">
-        <div className="mx-auto max-w-[1480px] px-4 pb-8 pt-7 sm:px-6 lg:px-8 lg:pb-12 lg:pt-10">
-          <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4 text-[10px] font-black uppercase tracking-[0.16em] text-white/38">
+        <div className="mx-auto max-w-[1480px] px-4 pb-8 pt-7 sm:px-6 lg:px-8 lg:pb-10 lg:pt-10">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] font-black uppercase tracking-[0.16em] text-white/38">
             <span>Fiji · Pacific · Global Technology</span>
-            <span className="hidden sm:inline">Independent-source verification · Business context</span>
+            <span>Verification first · compact newsroom</span>
           </div>
-          <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/38">Verified technology intelligence · Fiji first</p><h1 className="adi-hero-title mt-3 font-black uppercase text-white">Today&apos;s Signal</h1></div><p className="max-w-md text-sm leading-6 text-white/46 lg:text-right">What changed, why it matters, and what Fiji businesses should do next.</p></div>
+          <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
+            <div>
+              <p className="adi-kicker">Verified technology intelligence · Fiji first</p>
+              <h1 className="adi-hero-title mt-3 max-w-4xl font-black text-white">The smarter daily read for Fiji business.</h1>
+            </div>
+            <p className="max-w-md text-sm leading-7 text-white/50 lg:justify-self-end lg:text-right">Clear stories, clean design, practical context. Technology shifts explained for businesses operating in Fiji and the Pacific.</p>
+          </div>
 
           {lead ? (
-            <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_360px]">
-              <article className="group relative min-h-[430px] overflow-hidden border border-white/12 bg-[#111] sm:min-h-[520px]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={lead.featured_image_url || articleFallbackImage(lead)} alt={lead.featured_image_alt || lead.title} className="absolute inset-0 h-full w-full object-cover transition duration-1000 group-hover:scale-[1.035]" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
-                <div className="relative flex min-h-[430px] flex-col justify-end p-5 sm:min-h-[520px] sm:p-8 lg:p-10">
-                  <div className="mb-auto flex items-center justify-between gap-3">
-                    <span className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black" style={{ backgroundColor: categoryColor(displayCategory(lead)) }}>{displayCategory(lead)}</span>
-                    <span className="bg-black/70 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 backdrop-blur">{formatNewsDate(lead.published_at)}</span>
+            <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_390px]">
+              <article className="adi-panel group overflow-hidden p-3 sm:p-4">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(320px,.92fr)] lg:items-stretch">
+                  <Link href={articlePath(lead)} className="overflow-hidden rounded-[1.4rem] bg-[#0e1218]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={lead.featured_image_url || articleFallbackImage(lead)} alt={lead.featured_image_alt || lead.title} className="aspect-[16/11] h-full w-full object-cover transition duration-1000 group-hover:scale-[1.03]" />
+                  </Link>
+                  <div className="flex flex-col justify-between p-1 sm:p-3">
+                    <div>
+                      <CategoryChip label={displayCategory(lead)} />
+                      <p className="mt-4 text-[11px] font-black uppercase tracking-[0.13em] text-white/38">{formatNewsDate(lead.published_at)}</p>
+                      <h2 className="adi-title-balance mt-4 text-[2rem] font-black leading-[1] tracking-[-0.06em] text-white sm:text-[2.45rem] lg:text-[3rem]">
+                        <Link href={articlePath(lead)}>{lead.title}</Link>
+                      </h2>
+                      {lead.excerpt && <p className="mt-4 max-w-2xl text-sm leading-7 text-white/54 sm:text-[0.98rem]">{lead.excerpt}</p>}
+                    </div>
+                    <div className="mt-6 flex flex-wrap items-center gap-4">
+                      <Link href={articlePath(lead)} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-[11px] font-black uppercase tracking-[0.12em] text-black">Read story <ArrowRight size={14}/></Link>
+                      <Link href="/news" className="text-[11px] font-black uppercase tracking-[0.12em] text-white/50 hover:text-white">Open full newsroom</Link>
+                    </div>
                   </div>
-                  <h2 className="max-w-5xl text-3xl font-black uppercase leading-[.94] tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl"><Link href={articlePath(lead)}>{lead.title}</Link></h2>
-                  {lead.excerpt && <p className="mt-5 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">{lead.excerpt}</p>}
-                  <Link href={articlePath(lead)} className="mt-6 inline-flex w-fit items-center gap-2 border-b-2 border-white pb-1 text-xs font-black uppercase tracking-[0.12em]">Read story <ArrowRight size={14}/></Link>
                 </div>
               </article>
 
-              <aside className="border border-white/12 bg-[#0b0b0b] p-5 sm:p-6">
-                <div className="flex items-center justify-between border-b-4 border-white pb-4"><h2 className="text-xl font-black uppercase tracking-[-0.04em]">Staff Picks</h2><span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/30">Editor&apos;s desk</span></div>
-                <div className="mt-2">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>
-                <div className="mt-8 border-t border-white/10 pt-6">
-                  <p className="text-[10px] font-black uppercase tracking-[0.17em] text-white/32">Top contributor</p>
-                  <Link href="/authors/aura-digital-intelligence" className="mt-4 flex items-center gap-4 group">
-                    <div className="grid h-14 w-14 place-items-center rounded-full border border-white/15 bg-white text-sm font-black text-black">ADI</div>
-                    <div><p className="font-black uppercase tracking-[-0.02em] group-hover:text-white/70">Aura Intelligence Desk</p><p className="mt-1 text-xs text-white/35">Technology Editor · Fiji</p></div>
-                  </Link>
+              <aside className="space-y-4">
+                <div className="adi-panel p-4 sm:p-5">
+                  <SectionHeading eyebrow="Fresh now" title="Latest radar" href="/news" />
+                  <div className="space-y-3">
+                    {sideLead.map((article) => <StoryRow key={article.id} article={article} showExcerpt={false} />)}
+                  </div>
                 </div>
+                <AuraPanel leadTitle={lead.title} />
               </aside>
             </div>
           ) : (
-            <div className="mt-8 grid min-h-[440px] place-items-center border border-dashed border-white/18 bg-[#0d0d0d] p-8 text-center">
-              <div className="max-w-xl"><ShieldCheck className="mx-auto" size={34}/><h2 className="mt-5 text-3xl font-black uppercase">The newsroom is working.</h2><p className="mt-3 text-sm leading-7 text-white/45">The first story will appear after it clears verification, originality and the final quality gate.</p></div>
+            <div className="mt-8 grid min-h-[300px] place-items-center rounded-[1.5rem] border border-dashed border-white/16 bg-[#0d1218] p-8 text-center">
+              <div className="max-w-xl"><ShieldCheck className="mx-auto" size={34}/><h2 className="mt-5 text-3xl font-black">The newsroom is working.</h2><p className="mt-3 text-sm leading-7 text-white/45">The first story will appear after it clears verification, originality and the final quality gate.</p></div>
             </div>
           )}
         </div>
       </section>
 
-      {happenings.length > 0 && (
-        <section className="border-b border-white/10 bg-[#0a0a0a]">
-          <div className="mx-auto max-w-[1480px] px-4 py-10 sm:px-6 lg:px-8">
-            <SectionHeading title="Happening Today!" accent="#FF4F87" />
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-              {happenings.map((article) => <StoryCard key={article.id} article={article} compact />)}
-            </div>
-            <div className="mt-8 flex justify-end"><Link href="/news" className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.13em] text-white/55 hover:text-white">Read all posts <ArrowUpRight size={14}/></Link></div>
-          </div>
-        </section>
-      )}
+      <section className="mx-auto max-w-[1480px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="adi-panel-soft p-4"><p className="adi-kicker">What makes this different</p><h3 className="mt-2 text-lg font-black tracking-[-0.04em]">Verified before publish</h3><p className="mt-2 text-sm leading-6 text-white/48">Every article must clear sourcing and quality gates before publication.</p></div>
+          <div className="adi-panel-soft p-4"><p className="adi-kicker">Made for mobile</p><h3 className="mt-2 text-lg font-black tracking-[-0.04em]">More stories, less scrolling</h3><p className="mt-2 text-sm leading-6 text-white/48">Compact cards and horizontal layouts help readers see more news at once.</p></div>
+          <div className="adi-panel-soft p-4"><p className="adi-kicker">For Fiji business</p><h3 className="mt-2 text-lg font-black tracking-[-0.04em]">Global signals, local meaning</h3><p className="mt-2 text-sm leading-6 text-white/48">We focus on what new technology means in real business terms for Fiji and the Pacific.</p></div>
+        </div>
+      </section>
 
-      <section className="mx-auto grid max-w-[1480px] gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-16">
-        <div className="space-y-16">
-          <HotSection title="AI" href="/news/topic/ai" articles={ai} accent="#25C8E0" />
-          <HotSection title="Cybersecurity" href="/news/topic/cybersecurity" articles={cyber} accent="#FF4F87" />
-          <HotSection title="Business" href="/news/topic/business-tech" articles={business} accent="#FF7142" />
-          <HotSection title="Fiji & Pacific" href="/news/topic/fiji-pacific" articles={fiji} accent="#9D67FF" />
+      <section className="mx-auto grid max-w-[1480px] gap-8 px-4 pb-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:pb-16">
+        <div className="space-y-8">
+          <section className="adi-panel p-4 sm:p-5">
+            <SectionHeading eyebrow="Latest" title="Stories you should not miss" href="/news" />
+            <div className="space-y-3">
+              {latestRows.map((article) => <StoryRow key={article.id} article={article} />)}
+            </div>
+          </section>
+          <div className="grid gap-8 xl:grid-cols-2">
+            <TopicBlock title="Artificial Intelligence" href="/news/topic/ai" articles={ai} />
+            <TopicBlock title="Cybersecurity" href="/news/topic/cybersecurity" articles={cyber} />
+            <TopicBlock title="Business Technology" href="/news/topic/business-tech" articles={business} />
+            <TopicBlock title="Fiji & Pacific" href="/news/topic/fiji-pacific" articles={fiji} />
+          </div>
         </div>
 
-        <aside className="space-y-6 lg:sticky lg:top-32 lg:self-start">
-          <div className="border border-white/12 bg-[#0c0c0c] p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.17em] text-white/32">Why this publication</p>
-            <h2 className="mt-3 text-3xl font-black uppercase leading-none tracking-[-0.05em]">Global tech.<br/>Fiji context.</h2>
-            <p className="mt-4 text-sm leading-7 text-white/48">We filter technology news for what actually matters to Fiji businesses, verify the claims and explain the practical impact.</p>
-            <Link href="/about" className="mt-5 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-white">About the newsroom <ArrowUpRight size={13}/></Link>
+        <aside className="space-y-5 lg:sticky lg:top-32 lg:self-start">
+          <div className="adi-panel p-5">
+            <SectionHeading eyebrow="Trending" title="Reader picks" />
+            <div className="mt-2">
+              {staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}
+            </div>
           </div>
-
-          <div className="bg-[#F6C945] p-6 text-black">
-            <Rss size={24}/><p className="mt-5 text-[10px] font-black uppercase tracking-[0.17em]">Never miss a thing</p><h3 className="mt-2 text-3xl font-black uppercase leading-none tracking-[-0.05em]">Follow every verified update.</h3><p className="mt-4 text-sm font-semibold leading-6 text-black/65">Add Aura Intelligence to your RSS reader and get every published story automatically.</p><a href="/rss.xml" className="mt-6 inline-flex items-center gap-2 border-b-2 border-black pb-1 text-xs font-black uppercase tracking-[0.12em]">Open RSS Feed <ArrowUpRight size={13}/></a>
-          </div>
-
-          <div className="border border-white/12 bg-[#0c0c0c] p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.17em] text-white/32">Need the technology implemented?</p><h3 className="mt-3 text-2xl font-black uppercase leading-tight tracking-[-0.04em]">Turn the insight into a better business system.</h3><p className="mt-3 text-sm leading-6 text-white/45">Aura Digital Fiji builds websites, ecommerce, apps, business email, security and IT systems.</p><a href="https://auradigitalfiji.com?utm_source=aura_intelligence&utm_medium=homepage&utm_campaign=editorial_to_client" className="mt-5 inline-flex items-center gap-2 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-black">Visit Aura Digital Fiji <ArrowUpRight size={13}/></a>
+          <div className="adi-panel overflow-hidden p-6 text-white">
+            <Rss size={24}/>
+            <p className="mt-5 adi-kicker">Never miss a thing</p>
+            <h3 className="mt-2 text-3xl font-black leading-none tracking-[-0.05em]">Follow every verified update.</h3>
+            <p className="mt-4 text-sm leading-7 text-white/52">Add Aura Intelligence to your RSS reader and get every published story automatically.</p>
+            <a href="/rss.xml" className="mt-6 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-white">Open RSS Feed <ArrowUpRight size={13}/></a>
           </div>
         </aside>
       </section>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
-import { NumberedPick, SectionHeading, StoryCard } from "@/components/public-news/framagz-ui";
+import { NumberedPick, SectionHeading, StoryCard, StoryRow } from "@/components/public-news/framagz-ui";
 import { getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
@@ -23,53 +23,83 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
   const articles = query
     ? all.filter((a) => `${a.title} ${a.excerpt || ""} ${a.category || ""}`.toLowerCase().includes(query))
     : all;
-  const staffPicks = all.slice(0, 3);
+
+  const [lead, ...rest] = articles;
+  const staffPicks = all.slice(0, 4);
+  const gridStories = rest.slice(0, 6);
+  const latestRows = rest.slice(6);
 
   return (
-    <main className="min-h-screen bg-[#070707] text-white">
+    <main className="min-h-screen bg-[#07090d] text-white">
       <NewsHeader />
+
       <section className="adi-noise border-b border-white/10">
-        <div className="mx-auto max-w-[1480px] px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Aura Intelligence archive</p>
-          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><h1 className="text-5xl font-black uppercase leading-[.9] tracking-[-0.06em] sm:text-7xl lg:text-[6.5rem]">All News</h1><p className="max-w-md text-sm leading-6 text-white/44 lg:pb-2 lg:text-right">Verified reporting across AI, cybersecurity, cloud, business technology and the Pacific.</p></div>
-          <div className="mt-8 flex flex-wrap gap-2">
-            <Link href="/news" className="bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-black">All</Link>
-            {TOPIC_HUBS.map((topic) => <Link key={topic.slug} href={`/news/topic/${topic.slug}`} className="border border-white/12 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/56 transition hover:bg-white hover:text-black">{topic.label}</Link>)}
+        <div className="mx-auto max-w-[1480px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+          <p className="adi-kicker">Aura Intelligence archive</p>
+          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <h1 className="adi-hero-title font-black text-white">All news</h1>
+            <p className="max-w-md text-sm leading-7 text-white/48 lg:text-right">Verified reporting across AI, cybersecurity, cloud, business technology and the Pacific.</p>
           </div>
-          <form action="/news" method="get" className="mt-8 flex max-w-xl items-center gap-3 border-b-2 border-white pb-2">
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Link href="/news" className="adi-chip border-white/24 bg-white text-black">All</Link>
+            {TOPIC_HUBS.map((topic) => <Link key={topic.slug} href={`/news/topic/${topic.slug}`} className="adi-chip transition hover:border-white/25 hover:bg-white hover:text-black">{topic.label}</Link>)}
+          </div>
+          <form action="/news" method="get" className="adi-panel mt-6 flex max-w-2xl items-center gap-3 px-4 py-3">
             <Search size={17} className="text-white/40" />
             <input name="q" defaultValue={q} placeholder="Search stories..." className="min-w-0 flex-1 bg-transparent py-2 text-base font-bold text-white outline-none placeholder:text-white/28" />
-            <button className="text-[10px] font-black uppercase tracking-[0.14em] text-white/55 hover:text-white">Search</button>
+            <button className="rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black">Search</button>
           </form>
           {query && <p className="mt-4 text-sm text-white/45">{articles.length} result{articles.length === 1 ? "" : "s"} for “{q}”.</p>}
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1480px] gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-16">
-        <div>
-          <SectionHeading title={query ? "Search Results" : "Latest Stories"} accent="#25C8E0" />
-          {articles.length ? (
-            <div className="grid gap-x-6 gap-y-12 sm:grid-cols-2 xl:grid-cols-3">
-              {articles.map((article) => <StoryCard key={article.id} article={article} />)}
+      <section className="mx-auto grid max-w-[1480px] gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-12">
+        <div className="space-y-8">
+          {lead ? (
+            <div className="adi-panel p-4 sm:p-5">
+              <SectionHeading eyebrow={query ? "Search result highlight" : "Lead story"} title={query ? "Best match" : "Latest story"} />
+              <StoryCard article={lead} />
             </div>
           ) : (
-            <div className="border border-dashed border-white/16 bg-[#0c0c0c] p-10 text-center"><p className="text-2xl font-black uppercase">No stories found</p><p className="mt-3 text-sm text-white/45">Try a different search or explore a category.</p></div>
+            <div className="rounded-[1.4rem] border border-dashed border-white/16 bg-[#0d1218] p-10 text-center">
+              <p className="text-2xl font-black">No stories found</p>
+              <p className="mt-3 text-sm text-white/45">Try a different search or explore a category.</p>
+            </div>
+          )}
+
+          {gridStories.length > 0 && (
+            <div className="adi-panel p-4 sm:p-5">
+              <SectionHeading eyebrow="Browse" title="Fresh from the newsroom" />
+              <div className="adi-story-grid-dense">
+                {gridStories.map((article) => <StoryCard key={article.id} article={article} compact />)}
+              </div>
+            </div>
+          )}
+
+          {latestRows.length > 0 && (
+            <div className="adi-panel p-4 sm:p-5">
+              <SectionHeading eyebrow="Latest list" title={query ? "More matches" : "More stories"} />
+              <div className="space-y-3">
+                {latestRows.map((article) => <StoryRow key={article.id} article={article} />)}
+              </div>
+            </div>
           )}
         </div>
 
-        <aside className="space-y-6 lg:sticky lg:top-32 lg:self-start">
-          <div className="border border-white/12 bg-[#0c0c0c] p-5">
-            <h2 className="border-b-4 border-white pb-4 text-xl font-black uppercase tracking-[-0.04em]">Staff Picks</h2>
+        <aside className="space-y-5 lg:sticky lg:top-32 lg:self-start">
+          <div className="adi-panel p-5">
+            <SectionHeading eyebrow="Trending" title="Staff picks" />
             <div className="mt-2">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>
           </div>
-          <div className="bg-[#FF4F87] p-6 text-black">
-            <p className="text-[10px] font-black uppercase tracking-[0.17em]">Built for Fiji business</p>
-            <h3 className="mt-3 text-3xl font-black uppercase leading-none tracking-[-0.05em]">Less noise. More useful context.</h3>
-            <p className="mt-4 text-sm font-semibold leading-6 text-black/65">Every publishable story is filtered for relevance and verified before it reaches this page.</p>
-            <Link href="/editorial-standards" className="mt-5 inline-block border-b-2 border-black pb-1 text-xs font-black uppercase tracking-[0.12em]">How we publish</Link>
+          <div className="adi-panel p-6">
+            <p className="adi-kicker">Built for Fiji business</p>
+            <h3 className="mt-3 text-3xl font-black leading-none tracking-[-0.05em]">Less noise. More useful context.</h3>
+            <p className="mt-4 text-sm leading-7 text-white/52">Every publishable story is filtered for relevance and verified before it reaches this page.</p>
+            <Link href="/editorial-standards" className="mt-5 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-white">How we publish</Link>
           </div>
         </aside>
       </section>
+
       <NewsFooter />
     </main>
   );
