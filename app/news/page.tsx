@@ -31,7 +31,7 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
       <section className="adi-noise border-b border-white/10">
         <div className="mx-auto max-w-[1480px] px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Aura Intelligence archive</p>
-          <h1 className="mt-3 text-6xl font-black uppercase leading-[.85] tracking-[-0.07em] sm:text-8xl lg:text-[8rem]">All News</h1>
+          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><h1 className="text-5xl font-black uppercase leading-[.9] tracking-[-0.06em] sm:text-7xl lg:text-[6.5rem]">All News</h1><p className="max-w-md text-sm leading-6 text-white/44 lg:pb-2 lg:text-right">Verified reporting across AI, cybersecurity, cloud, business technology and the Pacific.</p></div>
           <div className="mt-8 flex flex-wrap gap-2">
             <Link href="/news" className="bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-black">All</Link>
             {TOPIC_HUBS.map((topic) => <Link key={topic.slug} href={`/news/topic/${topic.slug}`} className="border border-white/12 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/56 transition hover:bg-white hover:text-black">{topic.label}</Link>)}

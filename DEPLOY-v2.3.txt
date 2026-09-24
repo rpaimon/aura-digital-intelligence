@@ -1,0 +1,30 @@
+AURA DIGITAL INTELLIGENCE — v2.3 DAILY TARGET + MEDIA + PUBLIC UI
+
+WHAT THIS RELEASE DOES
+1. Keeps the v2.1 fact-check rules intact: minimum 2 independent publishers and confidence >= 75.
+2. Keeps v2.2 target-driven acquisition and can now queue up to 2 mature verification candidates per Worker cycle while the Fiji-day publication target is below 2.
+3. Adds free Openverse image acquisition when no Pexels key is configured. Pexels remains first choice when configured.
+4. Public pages no longer show empty black image blocks: missing images fall back to the article's generated Aura Intelligence editorial artwork.
+5. Reduces oversized article headlines and improves homepage/news hierarchy.
+6. Adds prominent contextual Aura Digital Fiji referral modules near the article opening and inside the article body, while keeping the existing sidebar CTA.
+
+DEPLOY ORDER
+A. Replace/update the project files from this master and push to GitHub/Vercel.
+B. Deploy cloudflare-worker/src/index.ts to Cloudflare.
+C. Confirm /health shows:
+   free-acquisition-engine-v2.3-daily-target-and-media
+D. Run once in Supabase SQL Editor:
+   supabase/migrations/017_daily_target_media_v2_3.sql
+
+EXPECTED SETTINGS AFTER MIGRATION 017
+- daily_article_target = 2
+- max_fact_checks_per_run = 2
+- max_articles_per_run = 2
+- max_publish_per_run = 2
+- max_ai_candidates_per_day = 16
+
+IMPORTANT
+- This does NOT guarantee two articles if fewer than two stories satisfy the verification/originality/quality gates.
+- It does remove the one-candidate-per-cycle bottleneck and keeps acquisition moving toward the 2/day target.
+- Old published articles with no image are backfilled one per Worker cycle. Until then, the website uses generated editorial artwork instead of blank placeholders.
+- PEXELS_API_KEY remains optional. If absent, Openverse is used as the licensed-photo fallback.

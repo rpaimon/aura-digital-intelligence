@@ -34,6 +34,24 @@ function dateTime(value: string | null) {
   return new Date(value).toLocaleString("en-FJ", { timeZone: "Pacific/Fiji", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function AuraInlineReferral({ accent, articleSlug, cta, compact = false }: { accent: string; articleSlug: string; cta: ReturnType<typeof auraServiceForArticle>; compact?: boolean }) {
+  return (
+    <aside className={`adi-aura-referral ${compact ? "adi-aura-referral-compact" : ""}`} style={{ borderColor: accent }}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/42">Practical Fiji implementation · Aura Digital Fiji</p>
+          <h3 className="mt-2 text-xl font-black uppercase leading-tight tracking-[-0.035em] text-white">{cta.title}</h3>
+          {!compact && <p className="mt-3 max-w-2xl text-sm leading-6 text-white/56">{cta.text}</p>}
+        </div>
+        <span className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: accent }} />
+      </div>
+      <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(articleSlug)}`} className="mt-4 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em] text-white">
+        {cta.label} <ArrowRight size={13}/>
+      </a>
+    </aside>
+  );
+}
+
 export default async function ArticlePage({ params }: { params: Params }) {
   const { slug } = await params;
   const article = await getPublishedArticleBySlug(slug);
@@ -85,7 +103,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
                 {article.published_at && <><span>•</span><time dateTime={article.published_at}>{dateTime(article.published_at)} FJT</time></>}
                 <span>•</span><span className="inline-flex items-center gap-1"><Clock3 size={11}/> {readingTime(content)} min read</span>
               </div>
-              <h1 className="mt-7 text-[3rem] font-black uppercase leading-[.93] tracking-[-0.065em] sm:text-6xl lg:text-[6.8rem]">{article.title}</h1>
+              <h1 className="mt-7 max-w-[1120px] text-[2.55rem] font-black uppercase leading-[.94] tracking-[-0.055em] sm:text-5xl md:text-6xl lg:text-[5.35rem]">{article.title}</h1>
               {article.subtitle && <p className="mt-6 max-w-4xl text-lg font-semibold leading-8 text-white/58 sm:text-xl">{article.subtitle}</p>}
               <div className="mt-8 flex flex-wrap items-center justify-between gap-5 border-t border-white/10 pt-5">
                 <Link href={`/authors/${authorSlug}`} className="group flex items-center gap-3">
@@ -101,15 +119,24 @@ export default async function ArticlePage({ params }: { params: Params }) {
         <div className="mx-auto max-w-[1280px] px-4 pt-8 sm:px-6 lg:px-8">
           <div className="overflow-hidden border border-white/12 bg-[#111]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={image} alt={article.featured_image_alt || article.title} className="aspect-[16/9] max-h-[720px] w-full object-cover" />
+            <img src={image} alt={article.featured_image_alt || article.title} className="aspect-[16/8.3] max-h-[640px] w-full object-cover" />
           </div>
           {article.featured_image_credit && <p className="mt-2 text-right text-[10px] text-white/28">{article.featured_image_source_url ? <a href={article.featured_image_source_url} target="_blank" rel="noreferrer noopener" className="hover:text-white">{article.featured_image_credit}</a> : article.featured_image_credit}</p>}
         </div>
 
         <div className="mx-auto grid max-w-[1280px] gap-10 px-4 pb-20 pt-10 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:pt-14">
           <div className="min-w-0">
-            {article.excerpt && <div className="mb-10 border-y border-white/10 py-6 text-xl font-black leading-8 text-white/82 sm:text-2xl">{article.excerpt}</div>}
-            <div className="adi-article-prose"><ArticleMarkdown content={content} /></div>
+            {article.excerpt && <div className="mb-7 border-y border-white/10 py-6 text-xl font-black leading-8 text-white/82 sm:text-2xl">{article.excerpt}</div>}
+            <div className="mb-8"><AuraInlineReferral accent={accent} articleSlug={article.slug} cta={cta} /></div>
+            <div className="adi-article-prose">
+              <ArticleMarkdown
+                content={content}
+                inserts={[
+                  <AuraInlineReferral key="aura-inline-1" accent={accent} articleSlug={article.slug} cta={cta} compact />,
+                  <AuraInlineReferral key="aura-inline-2" accent={accent} articleSlug={article.slug} cta={cta} compact />,
+                ]}
+              />
+            </div>
 
             {sources.length > 0 && (
               <section className="mt-14 border-t-4 border-white pt-6">
@@ -137,7 +164,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
             </div>
 
             <div className="p-6 text-black" style={{ backgroundColor: accent }}>
-              <p className="text-[10px] font-black uppercase tracking-[0.15em]">{cta.eyebrow}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em]">Aura Digital Fiji · {cta.eyebrow}</p>
               <h3 className="mt-3 text-3xl font-black uppercase leading-none tracking-[-0.05em]">{cta.title}</h3>
               <p className="mt-4 text-sm font-semibold leading-6 text-black/65">{cta.text}</p>
               <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`} className="mt-5 inline-flex items-center gap-2 border-b-2 border-black pb-1 text-xs font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>

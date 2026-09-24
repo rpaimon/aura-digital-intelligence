@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, Clock3 } from "lucide-react";
 import type { PublicArticle } from "@/lib/news/public";
-import { articlePath, displayCategory, readingTime } from "@/lib/news/public";
+import { articleFallbackImage, articlePath, displayCategory, readingTime } from "@/lib/news/public";
 
 export const categoryPalette: Record<string, string> = {
   ai: "#26C6DA",
@@ -40,12 +40,8 @@ export function StoryCard({ article, compact = false }: { article: PublicArticle
   return (
     <article className="adi-story-card group">
       <Link href={articlePath(article)} className="block overflow-hidden bg-[#151515]">
-        {article.featured_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={article.featured_image_url} alt={article.featured_image_alt || article.title} className={`${compact ? "aspect-[16/10]" : "aspect-[4/3]"} w-full object-cover transition duration-700 group-hover:scale-[1.045]`} />
-        ) : (
-          <div className={`${compact ? "aspect-[16/10]" : "aspect-[4/3]"} w-full bg-[linear-gradient(135deg,#1d1d1d,#0b0b0b)]`} />
-        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={article.featured_image_url || articleFallbackImage(article)} alt={article.featured_image_alt || article.title} className={`${compact ? "aspect-[16/10]" : "aspect-[4/3]"} w-full object-cover transition duration-700 group-hover:scale-[1.045]`} />
       </Link>
       <div className="pt-4">
         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-white/45">
@@ -70,10 +66,8 @@ export function NumberedPick({ article, index }: { article: PublicArticle; index
     <Link href={articlePath(article)} className="group grid grid-cols-[34px_72px_1fr] items-center gap-3 border-b border-white/10 py-4 last:border-b-0">
       <span className="text-3xl font-black tracking-[-0.06em] text-white/16">{index}</span>
       <div className="overflow-hidden rounded-sm bg-[#151515]">
-        {article.featured_image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={article.featured_image_url} alt="" className="aspect-square h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-        ) : <div className="aspect-square bg-[#181818]" />}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={article.featured_image_url || articleFallbackImage(article)} alt="" className="aspect-square h-full w-full object-cover transition duration-500 group-hover:scale-105" />
       </div>
       <div className="min-w-0">
         <p className="text-[9px] font-black uppercase tracking-[0.14em]" style={{ color }}>{category}</p>

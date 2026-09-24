@@ -76,3 +76,23 @@ body { background: var(--adi-bg); }
   .adi-reveal { opacity: 1; transform: none; animation: none; }
   *, *::before, *::after { transition-duration: .01ms !important; }
 }
+
+/* v2.3 public newsroom polish */
+.adi-aura-referral {
+  border: 1px solid rgba(255,255,255,.14);
+  border-left-width: 4px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255,255,255,.07), transparent 28%),
+    linear-gradient(135deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+  padding: 1.25rem;
+}
+.adi-aura-referral-compact { margin: 1.5rem 0; padding: 1rem 1.1rem; }
+
+@media (min-width: 1024px) {
+  .adi-hero-title { font-size: clamp(4.5rem, 9vw, 8.6rem); line-height: .82; }
+}
+
+@media (max-width: 640px) {
+  .adi-hero-title { font-size: clamp(3.6rem, 18vw, 5.4rem); line-height: .84; }
+  .adi-article-prose blockquote { font-size: 1.12rem; }
+}

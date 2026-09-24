@@ -1610,6 +1610,40 @@ async function fetchPexelsImage(env, story, generated) {
   }
 }
 
+
+async function fetchOpenverseImage(_env, story, generated) {
+  try {
+    const query = pexelsSearchQuery(story, generated);
+    const url = new URL("https://api.openverse.org/v1/images/");
+    url.searchParams.set("q", query);
+    url.searchParams.set("page_size", "12");
+    url.searchParams.set("license_type", "commercial");
+    const response = await fetch(url.toString(), {
+      headers: { "User-Agent": "AuraDigitalIntelligence/2.3 (https://intelligence.auradigitalfiji.com)" },
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const results = Array.isArray(payload?.results) ? payload.results.filter((item) => item?.url || item?.thumbnail) : [];
+    if (!results.length) return null;
+    const seed = String(story?.id || story?.title || "aura").split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    const image = results[seed % results.length];
+    const creator = String(image?.creator || "Openverse contributor").trim();
+    const license = String(image?.license || "open license").toUpperCase();
+    return {
+      url: image.url || image.thumbnail,
+      credit: `Image by ${creator} · ${license} via Openverse`,
+      sourceUrl: image.foreign_landing_url || image.detail_url || image.license_url || "https://openverse.org",
+      alt: `${generated?.category || story?.category || "Technology"} editorial image for ${generated?.title || story?.title || "Aura Digital Intelligence"}`.slice(0, 240),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchArticleImage(env, story, generated) {
+  return (await fetchPexelsImage(env, story, generated)) || (await fetchOpenverseImage(env, story, generated));
+}
+
 async function writeArticle(env, job, settings) {
   const story = job.stories;
   await updateJob(env, job.id, {
@@ -1737,7 +1771,7 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
 
     const quality = articleQualityScore(normalizedArticle, factCheck);
     const authorId = await getDefaultAuthorId(env);
-    const image = await fetchPexelsImage(env, story, normalizedArticle);
+    const image = await fetchArticleImage(env, story, normalizedArticle);
     const status = quality.score >= 85 && originality.passed ? "review" : "draft";
     const now = new Date().toISOString();
     const generationProvider = generated._provider || generatedResult.provider;
@@ -1860,7 +1894,7 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
         originalityRewriteCount,
         provider: generationProvider,
         model: generationModel,
-        imageProvider: image ? "pexels" : "branded-fallback",
+        imageProvider: image ? (env.PEXELS_API_KEY ? "pexels-or-openverse" : "openverse") : "branded-fallback",
       },
       error_message: null,
       finished_at: now,
@@ -3368,13 +3402,14 @@ async function queueBestDailyCandidate(env, settings) {
   if (stats.activeWriterJobs > 0) {
     return { queued: false, reason: "writer-has-priority", ...stats };
   }
-  if (stats.activeFactJobs > 0) {
-    return { queued: false, reason: "fact-check-already-active", ...stats };
+  if (stats.activeFactJobs >= settings.maxFactChecks) {
+    return { queued: false, reason: "fact-check-cap-active", ...stats };
   }
 
   const q = new URLSearchParams({
     select: "id,title,priority_score,published_at,discovered_at,category,source_url,sources(source_type)",
     decision: "eq.research",
+    status: "eq.scored",
     verification_status: "is.null",
     priority_score: `gte.${settings.candidateMinPriority}`,
     order: "priority_score.desc,published_at.desc",
@@ -4224,7 +4259,7 @@ async function backfillOneMissingArticleImage(env) {
   const article = rows[0];
   if (!article) return null;
   const story = article.stories || { id: article.story_id, title: article.title, category: article.category };
-  const image = await fetchPexelsImage(env, story, { title: article.title, category: article.category });
+  const image = await fetchArticleImage(env, story, { title: article.title, category: article.category });
   if (!image?.url) return { articleId: article.id, updated: false };
   const save = await sb(env, `articles?id=eq.${encodeURIComponent(article.id)}`, {
     method: "PATCH",
@@ -4297,12 +4332,18 @@ async function runCycle(env) {
   // a newly discovered candidate from starving the single bounded retry.
   const holdRetriesQueued = await queueDueHoldRetries(env, thresholds);
 
-  let dailyCandidate = null;
-  try {
-    dailyCandidate = await queueBestDailyCandidate(env, thresholds);
-  } catch (e) {
-    failures.push({ stage: "daily-candidate-selector", error: e instanceof Error ? e.message : String(e) });
+  const dailyCandidates = [];
+  for (let i = 0; i < thresholds.maxFactChecks; i += 1) {
+    try {
+      const candidate = await queueBestDailyCandidate(env, thresholds);
+      dailyCandidates.push(candidate);
+      if (!candidate?.queued) break;
+    } catch (e) {
+      failures.push({ stage: "daily-candidate-selector", error: e instanceof Error ? e.message : String(e) });
+      break;
+    }
   }
+  const dailyCandidate = dailyCandidates[0] || null;
 
   const factCheckJobs = await getQueuedFactCheckJobs(env, thresholds.maxFactChecks);
   const factChecked = [];
@@ -4353,7 +4394,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.2-target-driven-verification",
+    architecture: "free-acquisition-engine-v2.3-daily-target-and-media",
     staleJobsRecovered,
     discovery,
     scoredCount: decisions.length,
@@ -4362,6 +4403,7 @@ async function runCycle(env) {
     researchProcessed: 0,
     researched: [],
     dailyCandidate,
+    dailyCandidates,
     factCheckProcessed: factChecked.length,
     factChecked,
     holdRetriesQueued,
@@ -4401,12 +4443,13 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2.2-target-driven-verification",
+          "free-acquisition-engine-v2.3-daily-target-and-media",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
         groqConfigured: Boolean(env.GROQ_API_KEY),
         pexelsConfigured: Boolean(env.PEXELS_API_KEY),
+        openverseFallbackEnabled: true,
         cloudflareAIFallbackDefault: false,
       });
     }
@@ -4468,7 +4511,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2.2-target-driven-verification",
+        "free-acquisition-engine-v2.3-daily-target-and-media",
 
       endpoints: [
         "GET /health",

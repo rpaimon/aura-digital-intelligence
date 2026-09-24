@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Rss, ShieldCheck } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 import { NumberedPick, SectionHeading, StoryCard, categoryColor, formatNewsDate } from "@/components/public-news/framagz-ui";
-import { articlePath, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { articleFallbackImage, articlePath, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
@@ -50,22 +50,20 @@ export default async function Home() {
             <span>Fiji · Pacific · Global Technology</span>
             <span className="hidden sm:inline">Independent-source verification · Business context</span>
           </div>
-          <h1 className="adi-hero-title mt-8 font-black uppercase text-white">Today&apos;s<br/>Update</h1>
+          <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/38">Verified technology intelligence · Fiji first</p><h1 className="adi-hero-title mt-3 font-black uppercase text-white">Today&apos;s Signal</h1></div><p className="max-w-md text-sm leading-6 text-white/46 lg:text-right">What changed, why it matters, and what Fiji businesses should do next.</p></div>
 
           {lead ? (
             <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_360px]">
-              <article className="group relative min-h-[500px] overflow-hidden border border-white/12 bg-[#111] sm:min-h-[610px]">
-                {lead.featured_image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={lead.featured_image_url} alt={lead.featured_image_alt || lead.title} className="absolute inset-0 h-full w-full object-cover transition duration-1000 group-hover:scale-[1.035]" />
-                ) : <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(38,198,218,.25),transparent_30%),linear-gradient(135deg,#242424,#090909)]" />}
+              <article className="group relative min-h-[430px] overflow-hidden border border-white/12 bg-[#111] sm:min-h-[520px]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={lead.featured_image_url || articleFallbackImage(lead)} alt={lead.featured_image_alt || lead.title} className="absolute inset-0 h-full w-full object-cover transition duration-1000 group-hover:scale-[1.035]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-transparent" />
-                <div className="relative flex min-h-[500px] flex-col justify-end p-5 sm:min-h-[610px] sm:p-8 lg:p-10">
+                <div className="relative flex min-h-[430px] flex-col justify-end p-5 sm:min-h-[520px] sm:p-8 lg:p-10">
                   <div className="mb-auto flex items-center justify-between gap-3">
                     <span className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-black" style={{ backgroundColor: categoryColor(displayCategory(lead)) }}>{displayCategory(lead)}</span>
                     <span className="bg-black/70 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 backdrop-blur">{formatNewsDate(lead.published_at)}</span>
                   </div>
-                  <h2 className="max-w-5xl text-4xl font-black uppercase leading-[.92] tracking-[-0.055em] text-white sm:text-6xl lg:text-7xl"><Link href={articlePath(lead)}>{lead.title}</Link></h2>
+                  <h2 className="max-w-5xl text-3xl font-black uppercase leading-[.94] tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl"><Link href={articlePath(lead)}>{lead.title}</Link></h2>
                   {lead.excerpt && <p className="mt-5 max-w-2xl text-sm leading-7 text-white/62 sm:text-base">{lead.excerpt}</p>}
                   <Link href={articlePath(lead)} className="mt-6 inline-flex w-fit items-center gap-2 border-b-2 border-white pb-1 text-xs font-black uppercase tracking-[0.12em]">Read story <ArrowRight size={14}/></Link>
                 </div>

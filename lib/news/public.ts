@@ -72,6 +72,11 @@ export function articlePath(article: Pick<PublicArticle, "title" | "slug">) {
   return `/news/${publicSlugForArticle(article)}`;
 }
 
+
+export function articleFallbackImage(article: Pick<PublicArticle, "title" | "slug">) {
+  return `${siteUrl()}${articlePath(article)}/opengraph-image`;
+}
+
 export function canonicalArticleUrl(article: Pick<PublicArticle, "title" | "slug">) {
   return `${siteUrl()}${articlePath(article)}`;
 }
