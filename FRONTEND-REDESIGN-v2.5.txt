@@ -1,0 +1,30 @@
+AURA DIGITAL INTELLIGENCE — v2.5 FULL-BLEED EDITORIAL REDESIGN
+
+Scope
+- Frontend/public newsroom redesign only.
+- Cloudflare Worker pipeline is unchanged.
+- Supabase schema/migrations/settings are unchanged.
+- Existing publication, verification and automation behavior is preserved.
+
+Design direction
+- Kept the top Aura Intelligence logo/search/header structure.
+- Removed coloured category blocks; categories are now a slim text navigation strip.
+- Rebuilt homepage, all-news, topic, article, categories, about, authors, contact, career, editorial-policy pages and 404 presentation.
+- Removed the heavy card/dashboard look and most outer containers.
+- Added full-bleed editorial imagery and line-based hierarchy.
+- Mobile layouts use full viewport width for media/sections, with only readable text padding.
+- Topic sections use horizontal swipe rails on mobile to reduce vertical scrolling.
+- Article pages now transition from a dark editorial masthead into a warm, high-readability reading surface.
+- Aura Digital Fiji is visibly integrated in the article masthead, inline article referrals and homepage publisher band without altering article-generation logic.
+
+Deployment
+1. Replace your current repo with this master or copy the changed frontend files.
+2. Commit and push to GitHub.
+3. Let Vercel build/deploy.
+4. Do NOT run any Supabase migration for this release.
+5. Do NOT redeploy/change the Cloudflare Worker for this release.
+
+Validation note
+- Worker file SHA-256 was compared against v2.4 and is unchanged.
+- Supabase directory was compared against v2.4 and is unchanged.
+- A full local Next build could not be completed in the build environment because dependency installation did not finish; Vercel will be the final compile check.
