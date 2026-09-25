@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, CircleArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 import { NumberedPick, SectionHeading, StoryCard, StoryRow, CategoryChip, formatNewsDate } from "@/components/public-news/framagz-ui";
 import { articleFallbackImage, articlePath, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
@@ -110,7 +110,7 @@ export default async function Home() {
               <p className="adi-kicker">Aura Digital Fiji</p>
               <h3 className="mt-3 text-2xl font-black leading-tight tracking-[-0.045em]">Need help turning technology into something useful?</h3>
               <p className="mt-3 text-sm leading-7 text-white/48">Websites, ecommerce, mobile apps, business email, security and IT systems — built for businesses in Fiji.</p>
-              <a href="https://auradigitalfiji.com" className="mt-5 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-white">Visit Aura Digital Fiji <CircleArrowUpRight size={15}/></a>
+              <a href="https://auradigitalfiji.com" className="mt-5 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-white">Visit Aura Digital Fiji <ArrowUpRight size={15}/></a>
             </div>
           </aside>
         </div>
