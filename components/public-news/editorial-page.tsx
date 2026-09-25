@@ -4,7 +4,7 @@ import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 
 export function EditorialPage({ eyebrow, title, intro, children }: { eyebrow: string; title: string; intro: string; children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-[#080a0d] text-white">
+    <main className="adi-public-shell min-h-screen">
       <NewsHeader />
       <section className="border-b border-white/10">
         <div className="mx-auto max-w-[1320px] px-4 py-10 sm:px-6 lg:px-8 lg:py-14">

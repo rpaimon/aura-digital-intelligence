@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!topic) return { title: "Topic not found" };
   const title = `${topic.label} News & Intelligence for Fiji`;
   const description = `Verified ${topic.label.toLowerCase()} news, analysis and practical business context for Fiji and the Pacific.`;
-  return { title, description, alternates: { canonical: `${siteUrl()}/news/topic/${topic.slug}` }, openGraph: { title, description, url: `${siteUrl()}/news/topic/${topic.slug}`, type: "website", siteName: "Aura Digital Intelligence", images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630 }] }, twitter: { card: "summary_large_image", title, description, images: [`${siteUrl()}/opengraph-image`] } };
+  return { title, description, alternates: { canonical: `${siteUrl()}/news/topic/${topic.slug}` }, openGraph: { title, description, url: `${siteUrl()}/news/topic/${topic.slug}`, type: "website", siteName: "Aura Digital Intelligence", images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630, type: "image/png" }] }, twitter: { card: "summary_large_image", title, description, images: [`${siteUrl()}/opengraph-image`] } };
 }
 
 export default async function TopicPage({ params }: { params: Params }) {
@@ -27,7 +27,7 @@ export default async function TopicPage({ params }: { params: Params }) {
   const rows = rest.slice(6);
 
   return (
-    <main className="min-h-screen bg-[#080a0d] text-white">
+    <main className="adi-public-shell min-h-screen">
       <NewsHeader />
       <section className="border-b border-white/10"><div className="mx-auto max-w-[1480px] px-4 py-9 sm:px-6 lg:px-8 lg:py-12"><p className="adi-kicker">Topic desk</p><h1 className="adi-display mt-3 max-w-5xl text-white">{topic.label}</h1><p className="mt-5 max-w-2xl text-sm leading-7 text-white/48">Verified developments and practical context selected for Fiji businesses and the wider Pacific.</p><div className="mt-7 flex gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"><Link href="/news" className="shrink-0 text-[10px] font-black uppercase tracking-[0.15em] text-white/42 hover:text-white">All News</Link>{TOPIC_HUBS.filter((t)=>t.slug!==slug).map((t)=><Link key={t.slug} href={`/news/topic/${t.slug}`} className="shrink-0 text-[10px] font-black uppercase tracking-[0.15em] text-white/42 hover:text-white">{t.label}</Link>)}</div></div></section>
       <section className="mx-auto max-w-[1480px] px-0 sm:px-6 lg:px-8">

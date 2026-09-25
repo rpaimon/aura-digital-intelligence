@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: "All Technology News & Intelligence",
   description: "All verified technology, AI, cybersecurity, cloud and digital-business intelligence from Aura Digital Intelligence.",
   alternates: { canonical: `${siteUrl()}/news` },
-  openGraph: { type: "website", siteName: "Aura Digital Intelligence", title: "All News | Aura Digital Intelligence", description: "Verified technology intelligence for Fiji and the Pacific.", url: `${siteUrl()}/news`, images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630 }] },
+  openGraph: { type: "website", siteName: "Aura Digital Intelligence", title: "All News | Aura Digital Intelligence", description: "Verified technology intelligence for Fiji and the Pacific.", url: `${siteUrl()}/news`, images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630, type: "image/png" }] },
   twitter: { card: "summary_large_image", title: "All News | Aura Digital Intelligence", description: "Verified technology intelligence for Fiji and the Pacific.", images: [`${siteUrl()}/opengraph-image`] },
 };
 
@@ -28,7 +28,7 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
   const staffPicks = all.slice(0, 4);
 
   return (
-    <main className="min-h-screen bg-[#080a0d] text-white">
+    <main className="adi-public-shell min-h-screen">
       <NewsHeader />
 
       <section className="border-b border-white/10">
