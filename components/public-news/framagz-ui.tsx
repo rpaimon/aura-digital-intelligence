@@ -23,6 +23,15 @@ export function categoryColor(label?: string | null) {
   return categoryPalette.ai;
 }
 
+
+export function headlineLengthClass(title: string) {
+  const length = title.trim().length;
+  if (length >= 105) return "adi-title-very-long";
+  if (length >= 82) return "adi-title-long";
+  if (length >= 58) return "adi-title-medium";
+  return "adi-title-short";
+}
+
 export function formatNewsDate(value: string | null) {
   if (!value) return "";
   return new Date(value).toLocaleDateString("en-FJ", {
@@ -68,7 +77,7 @@ export function StoryCard({ article, compact = false }: { article: PublicArticle
           <CategoryChip label={category} />
           <span>{formatNewsDate(article.published_at)}</span>
         </div>
-        <h3 className={`${compact ? "text-[1.08rem] sm:text-[1.22rem]" : "text-[1.5rem] sm:text-[1.85rem]"} adi-title-balance mt-3 font-black leading-[1.06] tracking-[-0.045em] text-white transition group-hover:text-white/72`}>
+        <h3 className={`${compact ? "adi-card-title-compact" : "adi-card-title"} ${headlineLengthClass(article.title)} adi-title-balance mt-3 font-black text-white transition group-hover:text-white/72`}>
           <Link href={articlePath(article)}>{article.title}</Link>
         </h3>
         {!compact && article.excerpt && <p className="mt-3 line-clamp-3 text-sm leading-6 text-white/50">{article.excerpt}</p>}
@@ -89,11 +98,29 @@ export function StoryRow({ article, showExcerpt = true }: { article: PublicArtic
           <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/40">
             <span>{category}</span><span>•</span><span>{formatNewsDate(article.published_at)}</span>
           </div>
-          <h3 className="adi-title-balance mt-2 text-[1rem] font-black leading-[1.12] tracking-[-0.035em] text-white transition group-hover:text-white/72 sm:text-[1.18rem]">
+          <h3 className={`adi-row-title ${headlineLengthClass(article.title)} adi-title-balance mt-2 font-black text-white transition group-hover:text-white/72`}>
             <Link href={articlePath(article)}>{article.title}</Link>
           </h3>
           {showExcerpt && article.excerpt && <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/45">{article.excerpt}</p>}
         </div>
+      </div>
+    </article>
+  );
+}
+
+
+export function EditorialLead({ article }: { article: PublicArticle }) {
+  const category = displayCategory(article);
+  return (
+    <article className="adi-editorial-lead grid min-w-0 border-y border-white/10 md:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
+      <Link href={articlePath(article)} className="adi-story-media block">
+        <StoryVisual article={article} className="aspect-[16/9] h-full max-h-[440px]" />
+      </Link>
+      <div className="flex min-w-0 flex-col justify-center px-4 py-5 sm:px-6 md:px-7 md:py-7">
+        <div className="flex flex-wrap items-center gap-3 text-[10px] font-black uppercase tracking-[0.14em] text-white/42"><CategoryChip label={category}/><span>{formatNewsDate(article.published_at)}</span></div>
+        <h2 className={`adi-archive-lead-title ${headlineLengthClass(article.title)} adi-title-balance mt-3 font-black`}><Link href={articlePath(article)}>{article.title}</Link></h2>
+        {article.excerpt && <p className="mt-3 line-clamp-3 text-sm leading-6 text-white/48">{article.excerpt}</p>}
+        <Link href={articlePath(article)} className="mt-4 inline-flex w-fit items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.13em] text-white/60">Read story <ArrowUpRight size={12}/></Link>
       </div>
     </article>
   );

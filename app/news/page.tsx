@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
-import { NumberedPick, SectionHeading, StoryCard, StoryRow } from "@/components/public-news/framagz-ui";
+import { EditorialLead, NumberedPick, SectionHeading, StoryCard, StoryRow } from "@/components/public-news/framagz-ui";
 import { getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
       <NewsHeader />
 
       <section className="border-b border-white/10">
-        <div className="mx-auto max-w-[1480px] px-4 py-9 sm:px-6 lg:px-8 lg:py-12">
+        <div className="adi-wide-shell px-4 py-9 sm:px-6 lg:px-8 lg:py-12">
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
             <div><p className="adi-kicker">Newsroom archive</p><h1 className="adi-display mt-3 text-white">All news</h1></div>
             <form action="/news" method="get" className="flex items-center gap-3 border-b border-white/25 py-2">
@@ -49,13 +49,13 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1480px] px-0 sm:px-6 lg:px-8">
+      <section className="adi-wide-shell px-0 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
           <div className="min-w-0">
             {lead ? (
               <div className="border-b border-white/10 py-8 sm:py-10">
                 <SectionHeading eyebrow={query ? "Best match" : "Newest"} title={query ? "Top result" : "Lead story"} />
-                <StoryCard article={lead} />
+                <EditorialLead article={lead} />
               </div>
             ) : (
               <div className="px-4 py-16 text-center sm:px-0"><p className="text-2xl font-black">No stories found</p><p className="mt-3 text-sm text-white/45">Try a different search or explore a category.</p></div>

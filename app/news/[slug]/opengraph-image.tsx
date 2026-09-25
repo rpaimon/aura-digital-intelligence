@@ -13,31 +13,31 @@ export default async function Image({ params }: { params: Params }) {
   const article = await getPublishedArticleBySlug(slug);
   const title = article?.title || "Aura Digital Intelligence";
   const category = article ? displayCategory(article) : "Technology";
-  const image = article?.featured_image_url || null;
+  const fontSize = title.length >= 105 ? 48 : title.length >= 82 ? 54 : title.length >= 58 ? 61 : 68;
 
   return new ImageResponse(
     (
-      <div style={{ width: "100%", height: "100%", display: "flex", background: "#080a0d", color: "white", position: "relative", overflow: "hidden" }}>
-        <div style={{ width: "46%", height: "100%", background: "#11161d", position: "relative", overflow: "hidden" }}>
-          {image ? <img src={image} alt="" width="552" height="630" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 68%, rgba(8,10,13,.75) 100%)" }} />
-        </div>
-        <div style={{ width: "54%", height: "100%", padding: "52px 58px 48px 34px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: 15, letterSpacing: ".2em", fontWeight: 800, opacity: .42 }}>AURA DIGITAL FIJI</span>
-              <span style={{ marginTop: 8, fontSize: 28, fontWeight: 900 }}>AURA INTELLIGENCE</span>
-            </div>
-            <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: ".1em", opacity: .42 }}>FIJI · PACIFIC</span>
-          </div>
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "58px 64px 52px", background: "#080a0d", color: "#fff", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", width: 500, height: 500, borderRadius: 999, right: -130, top: -180, background: "rgba(185,255,102,.16)" }} />
+        <div style={{ position: "absolute", width: 320, height: 320, borderRadius: 999, left: -120, bottom: -170, background: "rgba(255,122,165,.10)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(255,255,255,.035), transparent 40%)" }} />
+
+        <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontSize: 19, fontWeight: 900, letterSpacing: ".1em", color: "#b9ff66", textTransform: "uppercase" }}>{category}</span>
-            <span style={{ marginTop: 16, fontSize: title.length > 96 ? 45 : title.length > 70 ? 50 : 57, lineHeight: .98, fontWeight: 900, letterSpacing: "-.04em" }}>{title}</span>
+            <span style={{ fontSize: 17, letterSpacing: ".22em", fontWeight: 800, opacity: .5 }}>AURA DIGITAL FIJI</span>
+            <span style={{ marginTop: 8, fontSize: 34, letterSpacing: "-.03em", fontWeight: 900 }}>AURA INTELLIGENCE</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 16, color: "rgba(255,255,255,.46)" }}>
-            <span>Verified technology intelligence</span>
-            <span>intelligence.auradigitalfiji.com</span>
-          </div>
+          <span style={{ padding: "9px 14px", border: "1px solid rgba(255,255,255,.20)", borderRadius: 999, fontSize: 14, fontWeight: 800, letterSpacing: ".10em", opacity: .8 }}>FIJI · PACIFIC</span>
+        </div>
+
+        <div style={{ position: "relative", maxWidth: 1020, display: "flex", flexDirection: "column" }}>
+          <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: ".13em", color: "#b9ff66", textTransform: "uppercase" }}>{category}</span>
+          <span style={{ marginTop: 17, fontSize, lineHeight: .98, fontWeight: 900, letterSpacing: "-.045em" }}>{title}</span>
+        </div>
+
+        <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 16, color: "rgba(255,255,255,.5)" }}>
+          <span>Verified technology intelligence for Fiji business</span>
+          <span>intelligence.auradigitalfiji.com</span>
         </div>
       </div>
     ),

@@ -18,6 +18,8 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
   function toggle() {
     const next: Theme = currentTheme() === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", next === "light" ? "#f6f3ec" : "#080a0d");
     window.localStorage.setItem("adi-theme", next);
     setTheme(next);
   }

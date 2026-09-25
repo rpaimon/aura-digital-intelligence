@@ -14,7 +14,7 @@ const socialBots = [
 
 export default function robots(): MetadataRoute.Robots {
   const base = siteUrl();
-  const indexingEnabled = process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED === "true";
+  const indexingEnabled = process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED !== "false";
 
   if (!indexingEnabled) {
     return {

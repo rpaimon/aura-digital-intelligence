@@ -2,13 +2,17 @@ import type { MetadataRoute } from "next";
 import { articlePath, getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  if (process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED !== "true") return [];
+  if (process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED === "false") return [];
   const base = siteUrl();
   const articles = await getPublishedArticles(1000);
   const staticPages = [
     "",
     "/news",
     "/about",
+    "/categories",
+    "/authors",
+    "/career",
+    "/ai-policy",
     "/editorial-standards",
     "/fact-checking",
     "/corrections",

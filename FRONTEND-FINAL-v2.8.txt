@@ -1,0 +1,35 @@
+AURA DIGITAL INTELLIGENCE — v2.8 FINAL FRONTEND HARDENING
+
+DEPLOYMENT
+- Frontend/Vercel only.
+- No Cloudflare Worker deployment required.
+- No Supabase migration or settings changes required.
+- Do not run any SQL for this update.
+
+MAIN FIXES
+- Restored wide desktop canvas for homepage, news archive, topic pages and article pages.
+- Long headlines now use length-aware responsive sizing on mobile and desktop.
+- Homepage lead uses screen width more efficiently and surfaces additional important stories above the fold.
+- Top stories are compact horizontal/editorial headline blocks.
+- Article pages use the desktop right column for Aura Digital Fiji, related stories, latest intelligence and publication trust information.
+- Mobile remains full width and compact.
+- Dark is the default theme; Light is optional and remembered after a visitor chooses it.
+- Social previews now use the standard article /opengraph-image route with 1200x630 branded cards.
+- Removed the custom /social-card dependency.
+- Facebook/WhatsApp/social crawlers remain explicitly allowed in robots rules.
+- Public indexing now defaults ON unless NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED is explicitly set to false.
+- Expanded sitemap coverage and kept Google News sitemap generation.
+- Added article author/publisher metadata, BreadcrumbList JSON-LD and stronger NewsArticle structured data.
+- Admin pages explicitly noindex.
+
+SOCIAL PREVIEW NOTE
+Facebook and WhatsApp can cache an older failed preview. After Vercel deploy:
+1. Test a fresh/new article URL first.
+2. For an already-shared Facebook URL, use Facebook Sharing Debugger and request a new scrape.
+3. WhatsApp may take time to refresh a previously cached URL; a newly published URL is the best test.
+
+VALIDATION PERFORMED
+- TypeScript/TSX syntax transpilation checks on changed files.
+- Worker SHA verified unchanged.
+- Supabase directory hashes verified unchanged.
+- No local Next.js production build was run, per project workflow preference.
