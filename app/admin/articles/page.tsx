@@ -87,7 +87,7 @@ export default async function ArticlesPage() {
       </header>
 
       <section className="mx-auto max-w-7xl px-6 py-10">
-        <div className="grid gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Generated" value={rows.length} />
           <Stat label="Quality passed" value={passed} />
           <Stat label="Scheduled" value={scheduled} />
@@ -142,7 +142,7 @@ export default async function ArticlesPage() {
                   {row.subtitle && <p className="mt-1 text-sm font-bold text-gray-600">{row.subtitle}</p>}
                   {row.excerpt && <p className="mt-3 max-w-4xl text-sm leading-6 text-gray-600">{row.excerpt}</p>}
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                  <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
                     <Metric label="Fact-check" value={row.stories?.verification_confidence == null ? "—" : String(Math.round(Number(row.stories.verification_confidence)))} />
                     <Metric label="Safe facts" value={String(notes.safe_fact_count ?? "—")} />
                     <Metric label="Sources" value={String(notes.independent_source_count ?? "—")} />

@@ -81,15 +81,48 @@ export function canonicalArticleUrl(article: Pick<PublicArticle, "title" | "slug
   return `${siteUrl()}${articlePath(article)}`;
 }
 
-export function displayCategory(article: Pick<PublicArticle, "title" | "category" | "excerpt">) {
-  const text = `${article.category || ""} ${article.title || ""} ${article.excerpt || ""}`.toLowerCase();
-  if (/cyber|security|privacy|ransomware|phishing|hack|malware|breach|threat intelligence|supply-chain hacking/.test(text)) return "Cybersecurity";
-  if (/\bai\b|artificial intelligence|machine learning|gemini|openai|anthropic|llm/.test(text)) return "Artificial Intelligence";
+export type PublicCategory = "Artificial Intelligence" | "Cybersecurity" | "Cloud" | "Business" | "Ecommerce" | "Fiji + Pacific" | "Technology";
+
+export function normalizeArticleCategory(value?: string | null): PublicCategory | null {
+  const category = String(value || "").trim().toLowerCase();
+  if (!category) return null;
+  if (/^cybersecurity$|^cyber$|security/.test(category)) return "Cybersecurity";
+  if (/^artificial intelligence$|^ai$|machine learning/.test(category)) return "Artificial Intelligence";
+  if (/^cloud$|cloud & infrastructure|infrastructure/.test(category)) return "Cloud";
+  if (/^ecommerce$|ecommerce & payments|commerce|payments/.test(category)) return "Ecommerce";
+  if (/^fiji \+ pacific$|^fiji & pacific$|pacific/.test(category)) return "Fiji + Pacific";
+  if (/^business$|business technology|enterprise/.test(category)) return "Business";
+  if (/^technology$|general technology/.test(category)) return "Technology";
+  return null;
+}
+
+export function displayCategory(article: Pick<PublicArticle, "title" | "category" | "excerpt">): PublicCategory {
+  // The article writer already stores one canonical category. Respect that first so
+  // public pages do not silently reclassify a story into several topic desks.
+  const stored = normalizeArticleCategory(article.category);
+  if (stored && stored !== "Technology") return stored;
+
+  // Older/general rows can still be classified safely from their public copy.
+  const text = `${article.title || ""} ${article.excerpt || ""}`.toLowerCase();
+  if (/cyber|security|privacy|ransomware|phishing|hack|malware|breach|threat intelligence|supply-chain hacking|credential|vulnerab/.test(text)) return "Cybersecurity";
+  if (/\bai\b|artificial intelligence|machine learning|gemini|openai|anthropic|llm|model/.test(text)) return "Artificial Intelligence";
   if (/cloud|hosting|infrastructure|data center|dns|server|network/.test(text)) return "Cloud";
   if (/ecommerce|commerce|payment|retail|shopify|checkout|m-paisa|mpaisa/.test(text)) return "Ecommerce";
   if (/fiji|pacific|samoa|tonga|vanuatu|papua new guinea|solomon islands/.test(text)) return "Fiji + Pacific";
   if (/business|enterprise|productivity|workplace|digital transformation/.test(text)) return "Business";
-  return article.category?.trim() || "Technology";
+  return stored || "Technology";
+}
+
+export function topicCategory(slug: string): PublicCategory | null {
+  const map: Record<string, PublicCategory> = {
+    ai: "Artificial Intelligence",
+    cybersecurity: "Cybersecurity",
+    cloud: "Cloud",
+    "business-tech": "Business",
+    ecommerce: "Ecommerce",
+    "fiji-pacific": "Fiji + Pacific",
+  };
+  return map[slug] || null;
 }
 
 export async function getPublishedArticles(limit = 24) {
@@ -145,16 +178,10 @@ export function topicBySlug(slug: string) {
 
 export async function getPublishedArticlesForTopic(slug: string, limit = 36) {
   const topic = topicBySlug(slug);
-  if (!topic) return [];
+  const category = topicCategory(slug);
+  if (!topic || !category) return [];
   const articles = await getPublishedArticles(200);
-  const keys = topic.keywords.map((key) => key.toLowerCase());
-  return articles
-    .filter((article) => {
-      const category = displayCategory(article).toLowerCase();
-      const haystack = `${category} ${article.title} ${article.excerpt || ""}`.toLowerCase();
-      return keys.some((key) => haystack.includes(key));
-    })
-    .slice(0, limit);
+  return articles.filter((article) => displayCategory(article) === category).slice(0, limit);
 }
 
 export type AuraServiceCTA = {
@@ -184,7 +211,7 @@ export function auraServiceForArticle(article: Pick<PublicArticle, "title" | "ca
 }
 
 export function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://intelligence.auradigitalfiji.com").replace(/\/$/, "");
 }
 
 export function stripSourcesSection(content: string | null | undefined) {

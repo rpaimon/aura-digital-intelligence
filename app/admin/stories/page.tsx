@@ -58,7 +58,7 @@ export default async function StoriesPage() {
       </header>
 
       <section className="mx-auto max-w-7xl px-6 py-10">
-        <div className="grid gap-4 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Latest loaded" value={stories.length} />
           <Stat label="New discoveries" value={discovered} />
           <Stat label="AI scored" value={scored} />

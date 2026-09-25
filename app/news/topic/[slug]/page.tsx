@@ -14,7 +14,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!topic) return { title: "Topic not found" };
   const title = `${topic.label} News & Intelligence for Fiji`;
   const description = `Verified ${topic.label.toLowerCase()} news, analysis and practical business context for Fiji and the Pacific.`;
-  return { title, description, alternates: { canonical: `${siteUrl()}/news/topic/${topic.slug}` }, openGraph: { title, description, url: `${siteUrl()}/news/topic/${topic.slug}`, type: "website" } };
+  return { title, description, alternates: { canonical: `${siteUrl()}/news/topic/${topic.slug}` }, openGraph: { title, description, url: `${siteUrl()}/news/topic/${topic.slug}`, type: "website", siteName: "Aura Digital Intelligence", images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630 }] }, twitter: { card: "summary_large_image", title, description, images: [`${siteUrl()}/opengraph-image`] } };
 }
 
 export default async function TopicPage({ params }: { params: Params }) {

@@ -11,11 +11,12 @@ export const metadata: Metadata = {
   title: "Fiji Technology News & Business Intelligence",
   description: "Verified AI, cybersecurity, cloud, ecommerce and digital-business news translated into practical context for Fiji businesses.",
   alternates: { canonical: siteUrl() },
-  openGraph: { type: "website", title: "Aura Digital Intelligence", description: "Technology news and business intelligence for Fiji and the Pacific.", url: siteUrl() },
+  openGraph: { type: "website", siteName: "Aura Digital Intelligence", title: "Aura Digital Intelligence", description: "Technology news and business intelligence for Fiji and the Pacific.", url: siteUrl(), images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630 }] },
+  twitter: { card: "summary_large_image", title: "Aura Digital Intelligence", description: "Technology news and business intelligence for Fiji and the Pacific.", images: [`${siteUrl()}/opengraph-image`] },
 };
 
-function topicArticles(articles: Awaited<ReturnType<typeof getPublishedArticles>>, matcher: RegExp, limit = 4) {
-  return articles.filter((a) => matcher.test(`${a.category || ""} ${a.title} ${a.excerpt || ""}`.toLowerCase())).slice(0, limit);
+function topicArticles(articles: Awaited<ReturnType<typeof getPublishedArticles>>, category: ReturnType<typeof displayCategory>, limit = 4) {
+  return articles.filter((article) => displayCategory(article) === category).slice(0, limit);
 }
 
 function TopicRail({ title, href, articles }: { title: string; href: string; articles: Awaited<ReturnType<typeof getPublishedArticles>> }) {
@@ -36,10 +37,10 @@ export default async function Home() {
   const topStories = articles.slice(1, 4);
   const latest = articles.slice(4, 11);
   const staffPicks = articles.slice(0, 4);
-  const ai = topicArticles(articles, /\bai\b|artificial intelligence|machine learning|gemini|openai|anthropic/);
-  const cyber = topicArticles(articles, /cyber|security|privacy|phishing|ransomware|hack/);
-  const business = topicArticles(articles, /business|commerce|payment|retail|productivity|digital transformation/);
-  const fiji = topicArticles(articles, /fiji|pacific|samoa|tonga|vanuatu|papua new guinea/);
+  const ai = topicArticles(articles, "Artificial Intelligence");
+  const cyber = topicArticles(articles, "Cybersecurity");
+  const business = topicArticles(articles, "Business");
+  const fiji = topicArticles(articles, "Fiji + Pacific");
 
   return (
     <main className="min-h-screen bg-[#080a0d] text-white">
@@ -48,8 +49,8 @@ export default async function Home() {
       {lead ? (
         <section className="border-b border-white/10">
           <div className="mx-auto max-w-[1480px] px-0 sm:px-6 lg:px-8">
-            <div className="grid lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,.8fr)] lg:min-h-[610px]">
-              <Link href={articlePath(lead)} className="adi-story-media block min-h-[320px] sm:min-h-[460px] lg:min-h-full">
+            <div className="grid lg:grid-cols-[minmax(0,1.12fr)_minmax(390px,.88fr)] lg:h-[540px] xl:h-[570px]">
+              <Link href={articlePath(lead)} className="adi-story-media block min-h-[320px] sm:min-h-[460px] lg:h-full lg:min-h-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={lead.featured_image_url || articleFallbackImage(lead)} alt={lead.featured_image_alt || lead.title} className="h-full w-full object-cover" />
               </Link>
@@ -57,7 +58,7 @@ export default async function Home() {
                 <div>
                   <div className="flex flex-wrap items-center gap-3"><CategoryChip label={displayCategory(lead)} /><span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/34">{formatNewsDate(lead.published_at)}</span></div>
                   <p className="adi-kicker mt-8">Lead intelligence</p>
-                  <h1 className="adi-display adi-title-balance mt-3 text-white"><Link href={articlePath(lead)}>{lead.title}</Link></h1>
+                  <h1 className="adi-lead-title adi-title-balance mt-3 text-white"><Link href={articlePath(lead)}>{lead.title}</Link></h1>
                   {lead.excerpt && <p className="mt-6 max-w-2xl text-[1rem] leading-7 text-white/52 sm:text-[1.05rem]">{lead.excerpt}</p>}
                 </div>
                 <Link href={articlePath(lead)} className="mt-7 inline-flex w-fit items-center gap-2 border-b border-white pb-1 text-[11px] font-black uppercase tracking-[0.13em] text-white">Read the story <ArrowRight size={14}/></Link>

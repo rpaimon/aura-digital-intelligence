@@ -34,10 +34,18 @@ body { background: var(--adi-bg); }
 }
 
 .adi-display {
-  font-size: clamp(2.9rem, 7.5vw, 7rem);
-  line-height: .88;
-  letter-spacing: -.075em;
+  font-size: clamp(2.7rem, 5.2vw, 5.25rem);
+  line-height: .92;
+  letter-spacing: -.07em;
   font-weight: 900;
+}
+
+.adi-lead-title {
+  font-size: clamp(2.5rem, 4.35vw, 4.55rem);
+  line-height: .94;
+  letter-spacing: -.068em;
+  font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .adi-title-balance { text-wrap: balance; }
@@ -79,16 +87,10 @@ body { background: var(--adi-bg); }
 
 .adi-topic-rail {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(280px, 32vw);
-  gap: 1rem;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-snap-type: inline mandatory;
-  scrollbar-width: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  min-width: 0;
 }
-.adi-topic-rail::-webkit-scrollbar { display: none; }
-.adi-topic-rail > * { scroll-snap-align: start; }
 
 .adi-article-prose blockquote {
   margin: 2rem 0;
@@ -141,12 +143,26 @@ body { background: var(--adi-bg); }
 
 @media (min-width: 1200px) {
   .adi-story-grid.three { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .adi-topic-rail { grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1.1rem; }
 }
 
 @media (max-width: 640px) {
-  .adi-display { font-size: clamp(2.8rem, 13.5vw, 4rem); line-height: .9; }
+  .adi-display { font-size: clamp(2.7rem, 12vw, 3.8rem); line-height: .92; }
+  .adi-lead-title { font-size: clamp(2.6rem, 11.5vw, 3.7rem); line-height: .93; }
   .adi-story-row { grid-template-columns: 106px minmax(0,1fr); gap: .8rem; padding: .8rem 1rem; }
-  .adi-topic-rail { grid-auto-columns: 84vw; padding-inline: 1rem; }
+  .adi-topic-rail {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 84vw;
+    gap: 1rem;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: inline mandatory;
+    scrollbar-width: none;
+    padding-inline: 1rem;
+  }
+  .adi-topic-rail::-webkit-scrollbar { display: none; }
+  .adi-topic-rail > * { scroll-snap-align: start; }
   .adi-topic-rail.edge { margin-inline: -1rem; }
   .adi-mobile-full { width: 100vw; margin-left: calc(50% - 50vw); }
   .adi-mobile-pad { padding-inline: 1rem; }

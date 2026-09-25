@@ -19,8 +19,25 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const canonical = canonicalArticleUrl(article);
   const title = article.seo_title || article.title;
   const description = article.seo_description || article.excerpt || "Verified technology intelligence from Aura Digital Intelligence.";
-  const image = article.featured_image_url || `${canonical}/opengraph-image`;
-  return { title, description, alternates: { canonical }, openGraph: { type: "article", title, description, url: canonical, publishedTime: article.published_at || undefined, modifiedTime: article.updated_at || undefined, section: article.category || undefined, images: [{ url: image, width: 1200, height: 630, alt: article.featured_image_alt || article.title }] }, twitter: { card: "summary_large_image", title, description, images: [image] } };
+  const shareImage = `${canonical}/opengraph-image`;
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      type: "article",
+      siteName: "Aura Digital Intelligence",
+      locale: "en_FJ",
+      title,
+      description,
+      url: canonical,
+      publishedTime: article.published_at || undefined,
+      modifiedTime: article.updated_at || undefined,
+      section: displayCategory(article),
+      images: [{ url: shareImage, width: 1200, height: 630, alt: article.featured_image_alt || article.title }],
+    },
+    twitter: { card: "summary_large_image", title, description, images: [shareImage] },
+  };
 }
 
 function dateTime(value: string | null) {
@@ -73,7 +90,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
             <div className="mt-8 grid gap-7 lg:grid-cols-[minmax(0,1fr)_310px] lg:items-end">
               <div>
                 <div className="flex flex-wrap items-center gap-3 text-[10px] font-black uppercase tracking-[0.14em] text-white/42"><CategoryChip label={category}/>{article.published_at && <time dateTime={article.published_at}>{dateTime(article.published_at)} FJT</time>}<span>•</span><span className="inline-flex items-center gap-1"><Clock3 size={11}/> {readingTime(content)} min read</span></div>
-                <h1 className="adi-title-balance mt-6 max-w-5xl text-[2.7rem] font-black leading-[.95] tracking-[-0.065em] sm:text-[4rem] lg:text-[5.25rem]">{article.title}</h1>
+                <h1 className="adi-title-balance mt-6 max-w-5xl text-[2.55rem] font-black leading-[.98] tracking-[-0.06em] sm:text-[3.5rem] lg:text-[4rem]">{article.title}</h1>
                 {article.subtitle && <p className="mt-5 max-w-3xl text-lg font-semibold leading-8 text-white/54">{article.subtitle}</p>}
               </div>
               <div className="border-t border-white/15 pt-5 lg:border-t-0 lg:border-l lg:pl-7">
@@ -91,7 +108,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
 
         <div className="mx-auto max-w-[1480px] sm:px-6 lg:px-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={image} alt={article.featured_image_alt || article.title} className="adi-mobile-full aspect-[16/9] max-h-[760px] w-full object-cover" />
+          <img src={image} alt={article.featured_image_alt || article.title} className="adi-mobile-full aspect-[16/9] max-h-[590px] w-full object-cover" />
           {article.featured_image_credit && <p className="px-4 pt-2 text-right text-[10px] text-white/28 sm:px-0">{article.featured_image_source_url ? <a href={article.featured_image_source_url} target="_blank" rel="noreferrer noopener" className="hover:text-white">{article.featured_image_credit}</a> : article.featured_image_credit}</p>}
         </div>
 
