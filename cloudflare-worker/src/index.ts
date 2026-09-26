@@ -684,6 +684,15 @@ const ARTICLE_SCHEMA = {
   ],
 };
 
+const HEADLINE_REPAIR_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    title: { type: "string" },
+  },
+  required: ["title"],
+};
+
 
 const FACT_CHECK_STATUS_VALUES = ["supported", "partial", "conflicted", "unverified"];
 
@@ -1552,6 +1561,83 @@ function articleQualityScore(article, factCheck) {
   return { score: Math.min(100, score), wordCount: words, hasFijiSection, hasActionSection };
 }
 
+function compactHeadlineFallback(value, maxLength = 82) {
+  const original = String(value || "").replace(/\s+/g, " ").trim();
+  if (!original || original.length <= maxLength) return original;
+
+  const hadFiji = /\bFiji\b/i.test(original);
+  let working = original
+    .replace(/\s+[–—-]\s+What Fiji (?:Firms|Businesses|Companies|SMEs) Must Know\s*$/i, "")
+    .replace(/\s+[–—-]\s+What Fiji Must Know\s*$/i, "")
+    .trim();
+
+  if (hadFiji) {
+    working = working.replace(/\bFiji\b[:,]?\s*/ig, "").replace(/\s+/g, " ").trim();
+    working = `Fiji: ${working}`;
+  }
+
+  const words = working.split(" ").filter(Boolean);
+  while (words.length > 3 && words.join(" ").length > maxLength) words.pop();
+  return words.join(" ").replace(/[,:;–—-]+$/g, "").trim().slice(0, maxLength).trim();
+}
+
+async function repairHeadlineForFinalQuality(env, settings, article, factCheck) {
+  const original = String(article?.title || "").replace(/\s+/g, " ").trim();
+  if (!original || original.length <= 85) return { changed: false, title: original, method: "none" };
+
+  const currentQuality = articleQualityScore(article, factCheck);
+  // A headline repair can add at most the 5 headline-quality points. Only spend
+  // another AI call when that one correction can realistically clear the 85 gate.
+  if (currentQuality.score < 80) {
+    return { changed: false, title: original, method: "not-repairable-by-headline-alone" };
+  }
+
+  const safeFacts = asStringArray(factCheck?.safe_facts).slice(0, 4);
+  const mustKeepFiji = /\bFiji\b/i.test(original);
+  const prompt = `
+Shorten this Aura Digital Intelligence headline for publication.
+
+RULES:
+- Return one headline only in JSON.
+- Target 55-82 characters and never exceed 82 characters.
+- Preserve the original meaning and urgency without clickbait.
+- Do not introduce any fact that is not supported by the verified facts below.
+- ${mustKeepFiji ? 'The word "Fiji" MUST remain in the headline.' : 'Do not force a Fiji reference if it is not already part of the headline.'}
+- Plain English, professional business-news style.
+
+CURRENT HEADLINE:
+${original}
+
+VERIFIED FACTS:
+${safeFacts.length ? safeFacts.map((fact, index) => `${index + 1}. ${fact}`).join("\n") : "Use only the meaning already present in the current headline."}
+`;
+
+  try {
+    const result = await aiJson(
+      env,
+      settings,
+      "writer",
+      "You are a precise headline editor. Shorten headlines without changing facts. Return only the requested JSON object.",
+      prompt,
+      HEADLINE_REPAIR_SCHEMA,
+      { maxTokens: 120, temperature: 0.1 }
+    );
+    const candidate = String(result?.data?.title || "").replace(/\s+/g, " ").trim();
+    const validLength = candidate.length >= 20 && candidate.length <= 82;
+    const keepsFiji = !mustKeepFiji || /\bFiji\b/i.test(candidate);
+    if (validLength && keepsFiji) {
+      return { changed: candidate !== original, title: candidate, method: `ai:${result.provider || "writer"}` };
+    }
+  } catch {}
+
+  const fallback = compactHeadlineFallback(original, 82);
+  return {
+    changed: Boolean(fallback && fallback !== original && fallback.length >= 20 && fallback.length <= 82),
+    title: fallback || original,
+    method: "deterministic-fallback",
+  };
+}
+
 function appendDeterministicSources(content, evidenceSources) {
   const sources = Array.isArray(evidenceSources) ? evidenceSources : [];
   const lines = sources
@@ -1978,7 +2064,9 @@ function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
   const safeFacts = asStringArray(factCheck?.safe_facts);
   const conflicts = asStringArray(factCheck?.conflicts);
   const confidence = Number(factCheck?.confidence || 0);
-  const writerScore = Number(article?.quality_score || 0);
+  const storedWriterScore = Number(article?.quality_score || 0);
+  const refreshedWriterQuality = articleQualityScore(article, factCheck);
+  const writerScore = Math.max(storedWriterScore, Number(refreshedWriterQuality.score || 0));
   const content = String(article?.content || "").trim();
   const words = content.split(/\s+/).filter(Boolean).length;
   const title = String(article?.title || "").trim();
@@ -1999,7 +2087,7 @@ function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
   if (writerScore < 85) failures.push(`Writer quality score ${writerScore} is below 85`);
   if (words < 250) failures.push(`Article is too short (${words} words)`);
   if (words > 1400) failures.push(`Article is too long (${words} words)`);
-  if (title.length < 20 || title.length > 100) failures.push("Headline length is outside the safe range");
+  if (title.length < 20 || title.length > 85) failures.push("Headline length is outside the safe range");
   if (!seoTitle || seoTitle.length > 70) failures.push("SEO title is missing or too long");
   if (seoDescription.length < 90 || seoDescription.length > 180) failures.push("SEO description length is outside the safe range");
   if (!hasSourceSection) failures.push("Verified Sources section is missing");
@@ -2057,15 +2145,79 @@ async function runFinalQualityGate(env, settings) {
       ]);
       if (!factCheck) throw new Error("No fact check found for final quality gate");
 
-      const quality = deterministicFinalQuality(article, factCheck, sourceCount, settings);
+      let candidateArticle = article;
+      const preRepairQuality = articleQualityScore(candidateArticle, factCheck);
+      let headlineRepair = { changed: false, title: String(candidateArticle.title || ""), method: "none" };
+
+      if (String(candidateArticle.title || "").trim().length > 85 && preRepairQuality.score >= 80) {
+        headlineRepair = await repairHeadlineForFinalQuality(env, settings, candidateArticle, factCheck);
+        if (headlineRepair.changed) {
+          const previousTitle = String(candidateArticle.title || "");
+          const repairedArticle = { ...candidateArticle, title: headlineRepair.title };
+          const repairedWriterQuality = articleQualityScore(repairedArticle, factCheck);
+          const repairedQualityNotes = {
+            ...objOrEmpty(candidateArticle.quality_notes),
+            headline_normalized: true,
+            headline_normalized_at: new Date().toISOString(),
+            headline_normalization_method: headlineRepair.method,
+            previous_headline_length: previousTitle.length,
+            repaired_headline_length: headlineRepair.title.length,
+            writer_quality_score_after_headline_repair: repairedWriterQuality.score,
+          };
+
+          const repairSave = await sb(env, `articles?id=eq.${encodeURIComponent(candidateArticle.id)}`, {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              title: headlineRepair.title,
+              quality_score: repairedWriterQuality.score,
+              quality_notes: repairedQualityNotes,
+              updated_at: new Date().toISOString(),
+            }),
+          });
+          if (!repairSave.ok) {
+            throw new Error(`Headline repair save failed (${repairSave.status}): ${(await repairSave.text()).slice(0, 300)}`);
+          }
+
+          await sb(env, "audit_logs", {
+            method: "POST",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({
+              action: "article.headline_normalized",
+              entity: "article",
+              entity_id: candidateArticle.id,
+              metadata: {
+                previous_title: previousTitle,
+                new_title: headlineRepair.title,
+                method: headlineRepair.method,
+                previous_writer_quality_score: preRepairQuality.score,
+                repaired_writer_quality_score: repairedWriterQuality.score,
+              },
+            }),
+          });
+
+          candidateArticle = {
+            ...repairedArticle,
+            quality_score: repairedWriterQuality.score,
+            quality_notes: repairedQualityNotes,
+          };
+        }
+      }
+
+      const quality = deterministicFinalQuality(candidateArticle, factCheck, sourceCount, settings);
       const now = new Date().toISOString();
-      const response = await sb(env, `articles?id=eq.${encodeURIComponent(article.id)}`, {
+      const response = await sb(env, `articles?id=eq.${encodeURIComponent(candidateArticle.id)}`, {
         method: "PATCH",
         headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
           final_quality_score: quality.score,
           final_quality_passed: quality.passed,
-          final_quality_notes: quality.notes,
+          final_quality_notes: {
+            ...quality.notes,
+            headline_repair_attempted: String(article.title || "").trim().length > 85 && preRepairQuality.score >= 80,
+            headline_repair_changed: headlineRepair.changed,
+            headline_repair_method: headlineRepair.method,
+          },
           final_quality_checked_at: now,
           status: quality.passed ? "approved" : "review",
           updated_at: now,
@@ -2086,7 +2238,14 @@ async function runFinalQualityGate(env, settings) {
         }),
       });
 
-      results.push({ articleId: article.id, storyId: article.story_id, passed: quality.passed, score: quality.score, failures: quality.notes.failures });
+      results.push({
+        articleId: candidateArticle.id,
+        storyId: candidateArticle.story_id,
+        passed: quality.passed,
+        score: quality.score,
+        failures: quality.notes.failures,
+        headlineRepaired: headlineRepair.changed,
+      });
     } catch (error) {
       results.push({ articleId: article.id, storyId: article.story_id, passed: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -4394,7 +4553,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.3-daily-target-and-media",
+    architecture: "free-acquisition-engine-v2.11-headline-repair-auto-publish",
     staleJobsRecovered,
     discovery,
     scoredCount: decisions.length,
@@ -4443,7 +4602,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2.3-daily-target-and-media",
+          "free-acquisition-engine-v2.11-headline-repair-auto-publish",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4511,7 +4670,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2.3-daily-target-and-media",
+        "free-acquisition-engine-v2.11-headline-repair-auto-publish",
 
       endpoints: [
         "GET /health",
