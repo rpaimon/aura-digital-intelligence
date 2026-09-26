@@ -51,12 +51,15 @@ function dateTime(value: string | null) {
   return new Date(value).toLocaleString("en-FJ", { timeZone: "Pacific/Fiji", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function AuraInlineReferral({ articleSlug, cta, compact = false }: { articleSlug: string; cta: ReturnType<typeof auraServiceForArticle>; compact?: boolean }) {
+function AuraImplementationNote({ articleSlug, cta }: { articleSlug: string; cta: ReturnType<typeof auraServiceForArticle> }) {
   return (
     <aside className="adi-aura-inline">
-      <p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-50">Aura Digital Fiji · Practical implementation</p>
-      <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div><h3 className="text-xl font-black leading-tight tracking-[-0.035em]">{cta.title}</h3>{!compact && <p className="adi-reading-copy mt-2 max-w-2xl text-sm leading-6">{cta.text}</p>}</div>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-50">From insight to implementation · Aura Digital Fiji</p>
+          <h3 className="mt-2 text-xl font-black leading-tight tracking-[-0.035em]">{cta.title}</h3>
+          <p className="adi-reading-copy mt-2 max-w-2xl text-sm leading-6">{cta.text}</p>
+        </div>
         <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(articleSlug)}`} className="inline-flex shrink-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>
       </div>
     </aside>
@@ -137,10 +140,10 @@ export default async function ArticlePage({ params }: { params: Params }) {
               </div>
 
               <aside className="hidden border-l border-white/10 pl-6 lg:block">
-                <p className="adi-kicker">Aura Digital Fiji</p>
-                <h2 className="mt-2 text-2xl font-black leading-[1.05] tracking-[-0.045em]">{cta.title}</h2>
-                <p className="mt-3 text-sm leading-7 text-white/48">{cta.text}</p>
-                <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`} className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">{cta.label} <ArrowRight size={13}/></a>
+                <p className="adi-kicker">Publisher</p>
+                <h2 className="mt-2 text-2xl font-black leading-[1.05] tracking-[-0.045em]">Aura Digital Fiji</h2>
+                <p className="mt-3 text-sm leading-7 text-white/48">Aura Intelligence is the editorial technology publication of Aura Digital Fiji, built to turn global developments into useful Fiji business context.</p>
+                <a href="https://auradigitalfiji.com" className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">Visit the publisher <ArrowRight size={13}/></a>
               </aside>
             </div>
           </div>
@@ -171,13 +174,8 @@ export default async function ArticlePage({ params }: { params: Params }) {
               {article.excerpt && <p className="adi-reading-copy max-w-[70ch] border-b pb-6 text-[1.08rem] font-black leading-[1.5] tracking-[-0.02em] sm:text-[1.28rem]" style={{ borderColor: "var(--adi-reading-line)" }}>{article.excerpt}</p>}
 
               <div className="adi-article-prose mt-7">
-                <ArticleMarkdown
-                  content={content}
-                  inserts={[
-                    <AuraInlineReferral key="aura-1" articleSlug={article.slug} cta={cta} compact/>,
-                    <AuraInlineReferral key="aura-2" articleSlug={article.slug} cta={cta} compact/>,
-                  ]}
-                />
+                <ArticleMarkdown content={content} />
+                <AuraImplementationNote articleSlug={article.slug} cta={cta} />
               </div>
 
               {sources.length > 0 && (
@@ -190,10 +188,11 @@ export default async function ArticlePage({ params }: { params: Params }) {
 
             <aside className="adi-article-sidebar hidden space-y-7 border-l pl-7 lg:block" style={{ borderColor: "var(--adi-reading-line)" }}>
               <div className="adi-sidebar-aura">
-                <p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-55">Aura Digital Fiji · {cta.eyebrow}</p>
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-55">Aura Digital Fiji · Practical next step</p>
                 <h3 className="mt-2 text-2xl font-black leading-[1.05] tracking-[-0.05em]">{cta.title}</h3>
                 <p className="mt-3 text-sm leading-7 opacity-65">{cta.text}</p>
-                <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`} className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>
+                <div className="mt-4 border-t border-current/20 pt-3 text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{cta.serviceName}</div>
+                <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`} className="mt-3 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>
               </div>
 
               {latest.length > 1 && <div className="adi-sidebar-module"><p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-45">Latest intelligence</p><div className="mt-2 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{latest.filter((item)=>item.id!==article.id).slice(0,4).map((item)=><Link key={item.id} href={articlePath(item)} className="block py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-38">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight">{item.title}</p></Link>)}</div></div>}

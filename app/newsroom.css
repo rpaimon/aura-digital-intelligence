@@ -463,3 +463,170 @@ html[data-theme="light"] .adi-aura-band { color: #fff; }
   .adi-archive-lead-title.adi-title-long,
   .adi-archive-lead-title.adi-title-very-long { font-size: 1.3rem; }
 }
+
+/* v2.9 lead carousel + refined Aura placement */
+.adi-lead-carousel {
+  position: relative;
+  min-width: 0;
+}
+
+.adi-lead-carousel-grid {
+  display: grid;
+  min-width: 0;
+}
+
+.adi-lead-carousel-media {
+  position: relative;
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--adi-surface-2);
+}
+
+.adi-lead-carousel-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  animation: adi-lead-fade .45s ease both;
+}
+
+.adi-lead-carousel-fallback {
+  display: flex;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--adi-accent) 20%, transparent), transparent 30%),
+    linear-gradient(145deg, #111821, #07090c 72%);
+  color: #fff;
+  font-size: .62rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.adi-lead-carousel-fallback strong { font-size: 1rem; }
+
+.adi-lead-carousel-count {
+  position: absolute;
+  right: .9rem;
+  bottom: .9rem;
+  padding: .42rem .58rem;
+  border: 1px solid rgba(255,255,255,.20);
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  backdrop-filter: blur(8px);
+  font-size: .6rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.adi-lead-carousel-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.25rem 1rem 1.4rem;
+}
+
+.adi-lead-carousel-title {
+  margin-top: .55rem;
+  max-width: 26ch;
+  font-size: clamp(1.6rem, 7vw, 2.05rem);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -.052em;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+
+.adi-lead-carousel-controls {
+  margin-top: 1.35rem;
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+}
+.adi-lead-carousel-controls button {
+  display: grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  place-items: center;
+  border: 1px solid var(--adi-line-strong);
+  border-radius: 999px;
+  color: var(--adi-fg);
+  background: transparent;
+}
+.adi-lead-carousel-controls span {
+  display: block;
+  width: 1.25rem;
+  height: 2px;
+  background: color-mix(in srgb, var(--adi-muted) 38%, transparent);
+  transition: width .2s ease, background .2s ease;
+}
+.adi-lead-carousel-controls span.active {
+  width: 2rem;
+  background: var(--adi-fg);
+}
+
+.adi-aura-editorial {
+  border-top: 2px solid var(--adi-fg);
+  border-bottom: 1px solid var(--adi-line);
+  padding: 1.15rem 0 1.3rem;
+}
+.adi-aura-monogram {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--adi-fg);
+  color: var(--adi-bg);
+  font-size: .82rem;
+  font-weight: 950;
+}
+
+@keyframes adi-lead-fade {
+  from { opacity: .25; transform: scale(1.012); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (min-width: 768px) {
+  .adi-lead-carousel-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(340px, .8fr);
+    align-items: stretch;
+  }
+  .adi-lead-carousel-media { min-height: 470px; }
+  .adi-lead-carousel-image,
+  .adi-lead-carousel-fallback {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    min-height: 470px;
+  }
+  .adi-lead-carousel-copy {
+    border-left: 1px solid var(--adi-line);
+    padding: 2rem 2.1rem;
+  }
+  .adi-lead-carousel-title {
+    max-width: 18ch;
+    font-size: clamp(2rem, 2.5vw, 3rem);
+    line-height: .98;
+  }
+}
+
+@media (min-width: 1280px) {
+  .adi-lead-carousel-media { min-height: 520px; }
+  .adi-lead-carousel-image,
+  .adi-lead-carousel-fallback { min-height: 520px; }
+  .adi-lead-carousel-copy { padding: 2.4rem 2.7rem; }
+  .adi-lead-carousel-title { font-size: clamp(2.2rem, 2.7vw, 3.25rem); }
+}
+
+@media (max-width: 767px) {
+  .adi-lead-carousel-copy { padding-top: 1rem; }
+  .adi-lead-carousel-title { max-width: none; }
+  .adi-lead-carousel-controls { justify-content: space-between; }
+}

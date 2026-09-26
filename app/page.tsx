@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { LeadCarousel } from "@/components/public-news/lead-carousel";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
-import { NumberedPick, SectionHeading, StoryCard, StoryRow, StoryVisual, CategoryChip, formatNewsDate, headlineLengthClass } from "@/components/public-news/framagz-ui";
-import { articlePath, displayCategory, getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { NumberedPick, SectionHeading, StoryCard, StoryRow, formatNewsDate, headlineLengthClass } from "@/components/public-news/framagz-ui";
+import { articlePath, displayCategory, fijiLeadHeadline, getPublishedArticles, siteUrl } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +41,7 @@ function TopicRail({ title, href, articles }: { title: string; href: string; art
 
 export default async function Home() {
   const articles = await getPublishedArticles(60);
-  const lead = articles[0];
-  const heroSecondary = articles.slice(1, 3);
+  const leadArticles = articles.slice(0, 3);
   const topStories = articles.slice(3, 7);
   const latest = articles.slice(7, 14);
   const staffPicks = articles.slice(0, 4);
@@ -50,43 +50,24 @@ export default async function Home() {
   const business = topicArticles(articles, "Business");
   const fiji = topicArticles(articles, "Fiji + Pacific");
 
+  const leadSlides = leadArticles.map((article) => ({
+    id: article.id,
+    href: articlePath(article),
+    category: displayCategory(article),
+    date: formatNewsDate(article.published_at),
+    title: fijiLeadHeadline(article),
+    imageUrl: article.featured_image_url,
+    imageAlt: article.featured_image_alt || article.title,
+  }));
+
   return (
     <main className="adi-public-shell min-h-screen">
       <NewsHeader />
 
-      {lead ? (
+      {leadSlides.length > 0 ? (
         <section className="border-b border-white/10">
           <div className="adi-wide-shell px-0 sm:px-6 lg:px-8">
-            <div className="grid lg:grid-cols-[minmax(0,1.12fr)_minmax(380px,.88fr)] lg:items-stretch">
-              <Link href={articlePath(lead)} className="adi-story-media hidden min-h-[420px] sm:block lg:min-h-[520px]">
-                <StoryVisual article={lead} className="h-full min-h-[420px] lg:min-h-[520px]" />
-              </Link>
-
-              <div className="flex min-w-0 flex-col px-4 py-6 sm:px-0 sm:py-8 lg:border-l lg:border-white/10 lg:px-9 lg:py-9">
-                <div className="flex flex-wrap items-center gap-3">
-                  <CategoryChip label={displayCategory(lead)} />
-                  <span className="text-[10px] font-black uppercase tracking-[0.14em] text-white/34">{formatNewsDate(lead.published_at)}</span>
-                </div>
-                <p className="adi-kicker mt-5">Lead intelligence</p>
-                <h1 className={`adi-lead-title ${headlineLengthClass(lead.title)} adi-title-balance mt-2 text-white`}><Link href={articlePath(lead)}>{lead.title}</Link></h1>
-                {lead.excerpt && <p className="mt-4 max-w-2xl text-[.94rem] leading-6 text-white/52 sm:text-[1rem] sm:leading-7">{lead.excerpt}</p>}
-                <Link href={articlePath(lead)} className="mt-5 inline-flex w-fit items-center gap-2 border-b border-white pb-1 text-[11px] font-black uppercase tracking-[0.13em] text-white">Read the story <ArrowRight size={14}/></Link>
-
-                {heroSecondary.length > 0 && (
-                  <div className="mt-6 grid gap-0 border-t border-white/10 sm:grid-cols-2 lg:mt-auto lg:grid-cols-1">
-                    {heroSecondary.map((article, index) => (
-                      <Link key={article.id} href={articlePath(article)} className={`group grid grid-cols-[1fr_auto] gap-4 py-4 ${index ? "border-t sm:border-l sm:border-t-0 lg:border-l-0 lg:border-t" : ""} border-white/10 sm:px-4 lg:px-0`}>
-                        <div className="min-w-0">
-                          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-white/34">Also important · {displayCategory(article)}</p>
-                          <h2 className={`${headlineLengthClass(article.title)} adi-secondary-title adi-title-balance mt-1.5 font-black text-white`}>{article.title}</h2>
-                        </div>
-                        <ArrowUpRight size={14} className="mt-1 shrink-0 text-white/32 transition group-hover:text-white" />
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <LeadCarousel slides={leadSlides} />
           </div>
         </section>
       ) : (
@@ -110,7 +91,7 @@ export default async function Home() {
       )}
 
       <section className="adi-wide-shell px-0 sm:px-6 lg:px-8">
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-10">
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_330px] xl:gap-10">
           <div className="min-w-0">
             {latest.length > 0 && (
               <section className="py-7 sm:py-9">
@@ -129,25 +110,28 @@ export default async function Home() {
             <p className="adi-kicker">Trending</p>
             <h2 className="mt-2 text-3xl font-black tracking-[-0.055em]">Reader picks</h2>
             <div className="mt-4">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>
-            <div className="mt-8 border-t border-white/10 pt-7">
-              <p className="adi-kicker">Aura Digital Fiji</p>
-              <h3 className="mt-3 text-2xl font-black leading-tight tracking-[-0.045em]">Turn technology into something useful.</h3>
-              <p className="mt-3 text-sm leading-7 text-white/48">Websites, ecommerce, mobile apps, business email, security and IT systems — built for businesses in Fiji.</p>
-              <a href="https://auradigitalfiji.com" className="mt-5 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em] text-white">Visit Aura Digital Fiji <ArrowUpRight size={15}/></a>
+
+            <div className="adi-aura-editorial mt-8">
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="adi-kicker">Published by</p><h3 className="mt-1 text-xl font-black tracking-[-0.045em]">Aura Digital Fiji</h3></div>
+                <span className="adi-aura-monogram" aria-hidden="true">A</span>
+              </div>
+              <p className="mt-4 text-sm leading-7 opacity-65">Aura Intelligence explains the signal. Aura Digital Fiji helps businesses turn it into a working digital system.</p>
+              <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-black uppercase tracking-[0.11em]">
+                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Web & ecommerce</a>
+                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Security & care</a>
+                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Business email</a>
+                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Apps & IT systems</a>
+              </div>
+              <a href="https://auradigitalfiji.com" className="mt-5 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em]">Visit Aura Digital Fiji <ArrowUpRight size={14}/></a>
             </div>
+
             <div className="mt-8 border-t border-white/10 pt-7">
               <p className="adi-kicker">Publication standard</p>
               <p className="mt-3 text-sm leading-7 text-white/48">Every published article passes independent-source verification, originality checks and a final quality gate.</p>
               <Link href="/editorial-standards" className="mt-4 inline-flex text-[10px] font-black uppercase tracking-[0.13em] text-white">Read our standards →</Link>
             </div>
           </aside>
-        </div>
-      </section>
-
-      <section className="adi-aura-band mt-2">
-        <div className="adi-wide-shell flex flex-col gap-5 px-4 py-8 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8">
-          <div><p className="text-[10px] font-black uppercase tracking-[0.18em] opacity-60">From insight to implementation</p><h2 className="mt-2 max-w-4xl text-3xl font-black leading-[.98] tracking-[-0.055em] sm:text-4xl">Aura Digital Fiji helps businesses build the systems behind the headlines.</h2></div>
-          <a href="https://auradigitalfiji.com" className="inline-flex shrink-0 items-center gap-2 border-b-2 border-current pb-1 text-xs font-black uppercase tracking-[0.12em]">Explore Aura Digital Fiji <ArrowUpRight size={14}/></a>
         </div>
       </section>
 

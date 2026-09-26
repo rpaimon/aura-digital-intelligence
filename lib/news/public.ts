@@ -72,6 +72,12 @@ export function articlePath(article: Pick<PublicArticle, "title" | "slug">) {
   return `/news/${publicSlugForArticle(article)}`;
 }
 
+export function fijiLeadHeadline(article: Pick<PublicArticle, "title">) {
+  const title = String(article.title || "").trim();
+  if (/\bfiji\b/i.test(title)) return title;
+  return `Fiji Brief — ${title}`;
+}
+
 
 export function articleFallbackImage(article: Pick<PublicArticle, "title" | "slug">) {
   return `${siteUrl()}${articlePath(article)}/opengraph-image`;
