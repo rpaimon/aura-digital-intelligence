@@ -42,7 +42,7 @@ function TopicRail({ title, href, articles }: { title: string; href: string; art
 export default async function Home() {
   const articles = await getPublishedArticles(60);
   const leadArticles = articles.slice(0, 3);
-  const topStories = articles.slice(3, 7);
+  const topStories = articles.slice(1, 5);
   const latest = articles.slice(7, 14);
   const staffPicks = articles.slice(0, 4);
   const ai = topicArticles(articles, "Artificial Intelligence");
@@ -56,6 +56,7 @@ export default async function Home() {
     category: displayCategory(article),
     date: formatNewsDate(article.published_at),
     title: fijiLeadHeadline(article),
+    summary: article.excerpt,
     imageUrl: article.featured_image_url,
     imageAlt: article.featured_image_alt || article.title,
   }));
@@ -79,10 +80,18 @@ export default async function Home() {
           <div className="adi-wide-shell px-0 sm:px-6 lg:px-8">
             <div className="grid sm:grid-cols-2 xl:grid-cols-4">
               {topStories.map((article, index) => (
-                <article key={article.id} className={`adi-story-card group px-4 py-4 sm:px-5 sm:py-5 ${index ? "border-t sm:border-l sm:border-t-0" : ""} border-white/10`}>
-                  <div className="flex items-center justify-between gap-3"><span className="adi-kicker">Top {String(index + 1).padStart(2,"0")}</span><span className="text-[9px] font-black uppercase tracking-[0.13em] text-white/28">{displayCategory(article)}</span></div>
-                  <h2 className={`${headlineLengthClass(article.title)} adi-topstory-title adi-title-balance mt-2 font-black`}><Link href={articlePath(article)}>{article.title}</Link></h2>
-                  <Link href={articlePath(article)} className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.13em] text-white/55">Open story <ArrowUpRight size={12}/></Link>
+                <article key={article.id} className={`adi-topstory-card adi-story-card group ${index ? "border-t sm:border-l sm:border-t-0" : ""} border-white/10`}>
+                  <Link href={articlePath(article)} className="adi-topstory-thumb" aria-label={`Read ${article.title}`}>
+                    {article.featured_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={article.featured_image_url} alt={article.featured_image_alt || article.title} />
+                    ) : <span aria-hidden="true">ADI</span>}
+                  </Link>
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between gap-3"><span className="adi-kicker">Top {String(index + 1).padStart(2,"0")}</span><span className="text-[9px] font-black uppercase tracking-[0.13em] text-white/28">{displayCategory(article)}</span></div>
+                    <h2 className={`${headlineLengthClass(article.title)} adi-topstory-title adi-title-balance mt-2 font-black`}><Link href={articlePath(article)}>{article.title}</Link></h2>
+                    <Link href={articlePath(article)} className="adi-topstory-readmore">Read more <ArrowUpRight size={12}/></Link>
+                  </div>
                 </article>
               ))}
             </div>
