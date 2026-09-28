@@ -4057,14 +4057,13 @@ function calculateVerificationConfidence(aiPackage, independentSourceCount) {
 function finalFactCheckVerdict(aiPackage, independentSourceCount, settings) {
   const metrics = calculateVerificationConfidence(aiPackage, independentSourceCount);
   const conflicts = Array.isArray(aiPackage.conflicts) ? aiPackage.conflicts : [];
-  const minimumSupportedClaims = Math.max(1, Math.ceil(metrics.totalClaims * 0.6));
 
   let verdict = "hold";
 
   if (
     independentSourceCount >= settings.factCheckMinSources &&
     metrics.confidence >= settings.factCheckApproveConfidence &&
-    metrics.supported >= minimumSupportedClaims &&
+    metrics.unverified === 0 &&
     metrics.conflicted === 0 &&
     conflicts.length === 0
   ) {
@@ -4075,7 +4074,7 @@ function finalFactCheckVerdict(aiPackage, independentSourceCount, settings) {
     verdict,
     confidence: metrics.confidence,
     confidenceMetrics: metrics,
-    aiVerdict: "deterministic-v7",
+    aiVerdict: "deterministic-v8",
   };
 }
 
@@ -4553,7 +4552,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.11-headline-repair-auto-publish",
+    architecture: "free-acquisition-engine-v2.12-verification-gate-correction",
     staleJobsRecovered,
     discovery,
     scoredCount: decisions.length,
@@ -4602,7 +4601,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2.11-headline-repair-auto-publish",
+          "free-acquisition-engine-v2.12-verification-gate-correction",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4670,7 +4669,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2.11-headline-repair-auto-publish",
+        "free-acquisition-engine-v2.12-verification-gate-correction",
 
       endpoints: [
         "GET /health",
