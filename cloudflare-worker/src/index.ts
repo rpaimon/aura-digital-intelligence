@@ -1916,6 +1916,12 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
         .slice(0, 12),
       fact_check_id: factCheck.id,
       generation_model: `${generationProvider}:${generationModel}`,
+      // Any fresh write/rewrite invalidates an older final-quality decision.
+      // Reset these fields so the gate always evaluates the newest article body.
+      final_quality_score: null,
+      final_quality_passed: null,
+      final_quality_notes: null,
+      final_quality_checked_at: null,
       generated_at: now,
       updated_at: now,
     };
@@ -2021,18 +2027,30 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
 }
 
 async function getFinalQualityCandidates(env, limit) {
+  // Fetch a wider recent window, then re-check any draft/review article that has
+  // never been quality-checked OR was updated after its last quality check.
+  // This fixes stale decisions when a later writer/rewrite updates content/sources.
+  const scanLimit = Math.max(20, Number(limit || 4) * 8);
   const query = new URLSearchParams({
-    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,originality_score,originality_passed,originality_notes,originality_rewrite_count,final_quality_checked_at",
+    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,originality_score,originality_passed,originality_notes,originality_rewrite_count,final_quality_checked_at,updated_at",
     status: "in.(draft,review)",
-    final_quality_checked_at: "is.null",
-    order: "created_at.asc",
-    limit: String(limit),
+    order: "updated_at.desc",
+    limit: String(scanLimit),
   });
   const response = await sb(env, `articles?${query.toString()}`);
   if (!response.ok) {
     throw new Error(`Final quality queue fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
   }
-  return response.json();
+  const rows = await response.json();
+  return rows
+    .filter((article) => {
+      if (!article.final_quality_checked_at) return true;
+      const checkedAt = Date.parse(String(article.final_quality_checked_at || ""));
+      const updatedAt = Date.parse(String(article.updated_at || ""));
+      if (!Number.isFinite(checkedAt)) return true;
+      return Number.isFinite(updatedAt) && updatedAt > checkedAt;
+    })
+    .slice(0, limit);
 }
 
 async function getFactCheckForQualityGate(env, article) {
@@ -2057,6 +2075,20 @@ async function getArticleSourceCount(env, articleId) {
   );
   if (!response.ok) return 0;
   return (await response.json()).length;
+}
+
+function countEmbeddedArticleSources(content) {
+  const text = String(content || "");
+  const match = text.match(/##\s+Sources\s*\n([\s\S]*)$/i);
+  if (!match) return 0;
+  const section = match[1];
+  const urls = section.match(/https?:\/\/[^\s)]+/gi) || [];
+  const unique = new Set(
+    urls
+      .map((url) => String(url).replace(/[.,;:]+$/, "").trim())
+      .filter(Boolean)
+  );
+  return unique.size;
 }
 
 function deterministicFinalQuality(article, factCheck, sourceCount, settings) {
@@ -2139,7 +2171,7 @@ async function runFinalQualityGate(env, settings) {
 
   for (const article of articles) {
     try {
-      const [factCheck, sourceCount] = await Promise.all([
+      const [factCheck, databaseSourceCount] = await Promise.all([
         getFactCheckForQualityGate(env, article),
         getArticleSourceCount(env, article.id),
       ]);
@@ -2204,7 +2236,12 @@ async function runFinalQualityGate(env, settings) {
         }
       }
 
-      const quality = deterministicFinalQuality(candidateArticle, factCheck, sourceCount, settings);
+      const embeddedSourceCount = countEmbeddedArticleSources(candidateArticle.content);
+      const effectiveSourceCount = Math.max(databaseSourceCount, embeddedSourceCount);
+      const quality = deterministicFinalQuality(candidateArticle, factCheck, effectiveSourceCount, settings);
+      quality.notes.source_count_database = databaseSourceCount;
+      quality.notes.source_count_embedded = embeddedSourceCount;
+      quality.notes.source_count_effective = effectiveSourceCount;
       const now = new Date().toISOString();
       const response = await sb(env, `articles?id=eq.${encodeURIComponent(candidateArticle.id)}`, {
         method: "PATCH",
@@ -4552,7 +4589,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.12-verification-gate-correction",
+    architecture: "free-acquisition-engine-v2.13-final-quality-refresh",
     staleJobsRecovered,
     discovery,
     scoredCount: decisions.length,
@@ -4601,7 +4638,7 @@ export default {
           "aura-intelligence-automation",
 
         stage:
-          "free-acquisition-engine-v2.12-verification-gate-correction",
+          "free-acquisition-engine-v2.13-final-quality-refresh",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4669,7 +4706,7 @@ export default {
         "Aura Digital Intelligence automation",
 
       stage:
-        "free-acquisition-engine-v2.12-verification-gate-correction",
+        "free-acquisition-engine-v2.13-final-quality-refresh",
 
       endpoints: [
         "GET /health",
