@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, Menu, Search } from "lucide-react";
 import { ThemeToggle } from "@/components/public-news/theme-toggle";
+import { AuraPublisherStrip } from "@/components/public-news/aura-placement";
 
 const nav = [
   { href: "/news", label: "All News" },
@@ -70,6 +71,7 @@ export function NewsHeader() {
           <span className="adi-topic-fade pointer-events-none sticky right-0 ml-auto h-full w-10 shrink-0 sm:hidden" aria-hidden="true" />
         </div>
       </div>
+      <AuraPublisherStrip />
     </header>
   );
 }

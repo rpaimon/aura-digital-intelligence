@@ -241,7 +241,7 @@ html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="borde
 
 .adi-article-sidebar {
   position: sticky;
-  top: 8.6rem;
+  top: 10.25rem;
   align-self: start;
 }
 .adi-sidebar-module { border-top: 1px solid var(--adi-reading-line); padding-top: 1.15rem; }
@@ -896,4 +896,52 @@ html[data-theme="light"] .adi-aura-studio {
   border-radius: 1rem;
   padding: 1rem;
   background: color-mix(in srgb, var(--adi-surface) 94%, var(--adi-accent) 6%);
+}
+
+/* v2.15 Aura Digital Fiji placement network */
+.adi-aura-publisher-strip {
+  background: color-mix(in srgb, var(--adi-surface) 92%, var(--adi-accent) 8%);
+  border-color: var(--adi-line);
+}
+.adi-aura-strip-brand,
+.adi-aura-strip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .32rem;
+  white-space: nowrap;
+  color: var(--adi-fg);
+  font-size: .58rem;
+  text-transform: uppercase;
+}
+.adi-aura-strip-brand { letter-spacing: .11em; }
+.adi-aura-strip-link { letter-spacing: .09em; opacity: .58; font-weight: 900; transition: opacity .18s ease; }
+.adi-aura-strip-link:hover { opacity: 1; }
+.adi-aura-strip-rule { width: 1px; height: 1rem; background: var(--adi-line-strong); }
+
+.adi-aura-studio-compact { padding: 1.05rem; border-radius: 1rem; }
+.adi-aura-studio-compact .adi-aura-studio-mark { min-width: 2.65rem; height: 2.65rem; border-radius: .75rem; }
+.adi-aura-studio-compact .adi-aura-service-grid a { min-height: 2.75rem; font-size: .6rem; }
+.adi-aura-studio-compact .adi-aura-service-grid a svg { opacity: .58; flex-shrink: 0; }
+
+.adi-aura-wide-band {
+  border-top: 1px solid var(--adi-line);
+  border-bottom: 1px solid var(--adi-line);
+  background:
+    radial-gradient(circle at 8% 50%, color-mix(in srgb, var(--adi-accent) 13%, transparent), transparent 28%),
+    color-mix(in srgb, var(--adi-surface) 95%, var(--adi-accent) 5%);
+  color: var(--adi-fg);
+}
+.adi-aura-wide-band a { color: var(--adi-fg); }
+.adi-aura-wide-band a:hover { opacity: .65; }
+.adi-aura-inline-secondary {
+  border-top-width: 1px;
+  background: color-mix(in srgb, var(--adi-reading-fg) 3%, transparent);
+  padding-left: .9rem;
+  padding-right: .9rem;
+}
+
+@media (max-width: 639px) {
+  .adi-aura-publisher-strip .mx-auto { padding-top: .55rem; padding-bottom: .55rem; }
+  .adi-aura-strip-brand, .adi-aura-strip-link { font-size: .54rem; }
+  .adi-aura-wide-band .adi-wide-shell { padding-top: 1.35rem; padding-bottom: 1.35rem; }
 }

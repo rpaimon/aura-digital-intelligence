@@ -134,7 +134,7 @@ export default async function Home() {
             <TopicRail title="Fiji & Pacific" href="/news/topic/fiji-pacific" articles={fiji} />
           </div>
 
-          <aside className="border-t border-white/10 px-4 py-8 sm:px-0 xl:sticky xl:top-32 xl:self-start xl:border-t-0 xl:py-9">
+          <aside className="border-t border-white/10 px-4 py-8 sm:px-0 xl:sticky xl:top-40 xl:self-start xl:border-t-0 xl:py-9">
             <p className="adi-kicker">Trending</p>
             <h2 className="mt-2 text-3xl font-black tracking-[-0.055em]">Reader picks</h2>
             <div className="mt-4">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>

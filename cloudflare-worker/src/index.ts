@@ -3727,7 +3727,7 @@ async function getPipelineDiagnostics(env) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const [candidateResponse, reviewResponse, approvedResponse, failedResponse, latestPublishedResponse, latestJobResponse] = await Promise.all([
-    sb(env, "stories?select=id,priority_score&decision=eq.research&status=eq.scored&verification_status=is.null&order=priority_score.desc&limit=100"),
+    sb(env, "stories?select=id,priority_score,decision&decision=in.(research,watch)&status=eq.scored&verification_status=is.null&order=priority_score.desc&limit=160"),
     sb(env, "articles?select=id,status,quality_score,final_quality_passed,updated_at&status=in.(draft,review)&order=updated_at.desc&limit=30"),
     sb(env, "articles?select=id,status,final_quality_passed,originality_passed&status=eq.approved&final_quality_passed=eq.true&originality_passed=eq.true&limit=20"),
     sb(env, `jobs?select=id,job_type,status,created_at&status=eq.failed&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=30`),
@@ -3741,8 +3741,19 @@ async function getPipelineDiagnostics(env) {
   const failed = failedResponse.ok ? await failedResponse.json() : [];
   const latestPublished = latestPublishedResponse.ok ? (await latestPublishedResponse.json())[0] || null : null;
   const latestJob = latestJobResponse.ok ? (await latestJobResponse.json())[0] || null : null;
-  const normalCandidates = candidates.filter((row) => Number(row.priority_score || 0) >= settings.candidateMinPriority).length;
-  const recoveryCandidates = candidates.filter((row) => Number(row.priority_score || 0) >= Math.max(55, settings.candidateMinPriority - 10)).length;
+  const recoveryDeep = fijiLocalHour() >= 14 && stats.articlesPublishedToday === 0;
+  const recoveryThreshold = recoveryDeep
+    ? Math.max(50, settings.candidateMinPriority - 18)
+    : Math.max(55, settings.candidateMinPriority - 10);
+  const normalCandidates = candidates.filter(
+    (row) => String(row.decision || "") === "research" && Number(row.priority_score || 0) >= settings.candidateMinPriority
+  ).length;
+  const recoveryCandidates = candidates.filter(
+    (row) => ["research", "watch"].includes(String(row.decision || "")) && Number(row.priority_score || 0) >= recoveryThreshold
+  ).length;
+  const recoveryWatchCandidates = candidates.filter(
+    (row) => String(row.decision || "") === "watch" && Number(row.priority_score || 0) >= recoveryThreshold
+  ).length;
   const strongReviews = reviews.filter((row) => Number(row.quality_score || 0) >= 85).length;
 
   let likelyBlocker = "pipeline-moving";
@@ -3757,7 +3768,7 @@ async function getPipelineDiagnostics(env) {
 
   return {
     ok: true,
-    stage: "free-acquisition-engine-v2.14-stability-and-recovery",
+    stage: "free-acquisition-engine-v2.15-candidate-recovery",
     fijiDate: stats.fijiDate,
     likelyBlocker,
     target: settings.dailyArticleTarget,
@@ -3769,6 +3780,9 @@ async function getPipelineDiagnostics(env) {
     activeWriterJobs: stats.activeWriterJobs,
     normalCandidatePool: normalCandidates,
     recoveryCandidatePool: recoveryCandidates,
+    recoveryWatchCandidatePool: recoveryWatchCandidates,
+    recoveryThreshold,
+    recoveryTier: recoveryDeep ? "deep" : "standard",
     strongReviewsWaiting: strongReviews,
     publishableApprovedWaiting: approved.length,
     failedJobsLast24h: failed.length,
@@ -3791,10 +3805,13 @@ function candidateAgeMinutes(candidate) {
   return Math.max(0, (Date.now() - timestamp) / 60000);
 }
 
-async function fetchDailyCandidatePool(env, minPriority, limit = 36) {
+async function fetchDailyCandidatePool(env, minPriority, limit = 36, decisions = ["research"]) {
+  const decisionFilter = decisions.length === 1
+    ? `eq.${decisions[0]}`
+    : `in.(${decisions.join(",")})`;
   const q = new URLSearchParams({
-    select: "id,title,priority_score,published_at,discovered_at,category,source_url,sources(source_type)",
-    decision: "eq.research",
+    select: "id,title,priority_score,decision,published_at,discovered_at,category,source_url,sources(source_type)",
+    decision: decisionFilter,
     status: "eq.scored",
     verification_status: "is.null",
     priority_score: `gte.${minPriority}`,
@@ -3841,24 +3858,35 @@ async function queueBestDailyCandidate(env, settings) {
     return { queued: false, reason: "fact-check-cap-active", recoveryMode, ...stats };
   }
 
-  let candidates = await fetchDailyCandidatePool(env, settings.candidateMinPriority, 36);
+  let candidates = await fetchDailyCandidatePool(env, settings.candidateMinPriority, 36, ["research"]);
   let readyCandidates = candidates.filter(
     (candidate) => candidateAgeMinutes(candidate) >= candidateCoverageDelayMinutes(candidate)
   );
   let selectorThreshold = settings.candidateMinPriority;
+  let selectorDecisions = ["research"];
+  let recoveryTier = "none";
 
-  // When the normal priority pool cannot keep the daily target moving, widen only
-  // the editorial-priority pool. Verification requirements remain exactly the same.
+  // Recovery must genuinely widen the candidate universe, not just lower the
+  // score on rows that were already labelled RESEARCH. Once the Fiji day is
+  // underway and the 2-story target is still unmet, selected WATCH stories are
+  // allowed into verification. Publication standards remain unchanged: they
+  // still need 2 independent sources, >=75 verification confidence, writer >=85,
+  // originality checks and final quality >=90 before anything can publish.
   if (!readyCandidates.length && recoveryMode) {
-    selectorThreshold = Math.max(55, settings.candidateMinPriority - 10);
-    candidates = await fetchDailyCandidatePool(env, selectorThreshold, 48);
+    const deepRecovery = fijiLocalHour() >= 14 && stats.articlesPublishedToday === 0;
+    recoveryTier = deepRecovery ? "deep" : "standard";
+    selectorThreshold = deepRecovery
+      ? Math.max(50, settings.candidateMinPriority - 18)
+      : Math.max(55, settings.candidateMinPriority - 10);
+    selectorDecisions = ["research", "watch"];
+    candidates = await fetchDailyCandidatePool(env, selectorThreshold, deepRecovery ? 72 : 56, selectorDecisions);
     readyCandidates = candidates.filter(
       (candidate) => candidateAgeMinutes(candidate) >= candidateCoverageDelayMinutes(candidate)
     );
   }
 
   if (!candidates.length) {
-    return { queued: false, reason: "no-qualified-candidate", recoveryMode, selectorThreshold, ...stats };
+    return { queued: false, reason: "no-qualified-candidate", recoveryMode, recoveryTier, selectorThreshold, selectorDecisions, ...stats };
   }
 
   if (!readyCandidates.length) {
@@ -3867,6 +3895,8 @@ async function queueBestDailyCandidate(env, settings) {
       reason: "waiting-for-independent-coverage",
       recoveryMode,
       selectorThreshold,
+      selectorDecisions,
+      recoveryTier,
       waitingCandidates: candidates.length,
       nextCandidateDelayMinutes: Math.max(
         1,
@@ -3896,9 +3926,12 @@ async function queueBestDailyCandidate(env, settings) {
     title: candidate.title,
     priority: candidate.priority_score,
     sourceType: candidate?.sources?.source_type || null,
+    sourceDecision: candidate?.decision || null,
     candidateAgeMinutes: Math.round(candidateAgeMinutes(candidate)),
     recoveryMode,
+    recoveryTier,
     selectorThreshold,
+    selectorDecisions,
     effectiveAiCap,
     effectiveScanCap,
     reason: recoveryMode ? "target-recovery-verification-candidate" : "target-driven-verification-candidate",
@@ -4859,7 +4892,7 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.14-stability-and-recovery",
+    architecture: "free-acquisition-engine-v2.15-candidate-recovery",
     staleJobsRecovered,
     approvedWriterRecovery,
     discovery,
@@ -4909,7 +4942,7 @@ export default {
           "aura-intelligence-newsroom",
 
         stage:
-          "free-acquisition-engine-v2.14-stability-and-recovery",
+          "free-acquisition-engine-v2.15-candidate-recovery",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4985,7 +5018,7 @@ export default {
         "Aura Digital Intelligence newsroom",
 
       stage:
-        "free-acquisition-engine-v2.14-stability-and-recovery",
+        "free-acquisition-engine-v2.15-candidate-recovery",
 
       endpoints: [
         "GET /health",

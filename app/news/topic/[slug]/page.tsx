@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
+import { AuraWideBand } from "@/components/public-news/aura-placement";
 import { EditorialLead, SectionHeading, StoryCard, StoryRow } from "@/components/public-news/framagz-ui";
 import { getPublishedArticlesForTopic, siteUrl, topicBySlug, TOPIC_HUBS } from "@/lib/news/public";
 
@@ -37,6 +38,7 @@ export default async function TopicPage({ params }: { params: Params }) {
           {rows.length > 0 && <div className="py-8 sm:py-10"><SectionHeading eyebrow="Latest" title="Full stream" /><div>{rows.map((article)=><StoryRow key={article.id} article={article}/>)}</div></div>}
         </div> : <div className="px-4 py-16 text-center sm:px-0"><h2 className="text-2xl font-black">Monitoring this desk</h2><p className="mt-3 text-sm text-white/40">No published stories yet. New verified coverage will appear here when it is ready.</p></div>}
       </section>
+      <AuraWideBand title={`Put ${topic.label.toLowerCase()} insight to work in your business.`} />
       <NewsFooter />
     </main>
   );

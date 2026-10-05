@@ -1,0 +1,21 @@
+Aura Digital Intelligence v2.15 — Candidate Recovery + Aura Placement
+
+BACKEND STABILITY
+- Recovery mode now genuinely includes scored WATCH candidates when the normal RESEARCH pool is empty.
+- Normal selection remains RESEARCH stories at the normal priority threshold.
+- Standard recovery (after 10:00 Fiji time while daily target is unmet): RESEARCH + WATCH, priority floor min-10 with hard floor 55.
+- Deep recovery (after 14:00 Fiji time when 0 articles have published): RESEARCH + WATCH, priority floor min-18 with hard floor 50.
+- Verification/publication standards are unchanged: 2 independent sources, >=75 confidence, writer >=85, originality checks, final quality >=90.
+- Diagnostics now reports recovery WATCH pool, recovery threshold and recovery tier.
+- Worker stage: free-acquisition-engine-v2.15-candidate-recovery
+
+AURA DIGITAL FIJI PLACEMENT
+- Added a slim publisher/services strip to the global public header, so Aura appears across every public page.
+- Kept the existing header button, mobile menu placement and footer publisher credit.
+- Added service placements to the News archive sidebar and bottom.
+- Added contextual Aura service bands to every topic page and Categories.
+- Article pages now include: publisher card near headline, two contextual inline placements, desktop sidebar service card, bottom service band, header strip and footer credit.
+- All service links route through /go/aura where practical for first-party conversion tracking.
+
+No Supabase migration is required.
+No quality threshold was lowered.

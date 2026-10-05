@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
+import { AuraStudioCompact, AuraWideBand } from "@/components/public-news/aura-placement";
 import { EditorialLead, NumberedPick, SectionHeading, StoryCard, StoryRow } from "@/components/public-news/framagz-ui";
 import { getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
@@ -73,14 +74,16 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
             )}
           </div>
 
-          <aside className="border-t border-white/10 px-4 py-8 sm:px-0 lg:sticky lg:top-32 lg:self-start lg:border-t-0 lg:py-10">
+          <aside className="border-t border-white/10 px-4 py-8 sm:px-0 lg:sticky lg:top-40 lg:self-start lg:border-t-0 lg:py-10">
             <p className="adi-kicker">Trending</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em]">Reader picks</h2>
             <div className="mt-4">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>
+            <div className="mt-8"><AuraStudioCompact eyebrow="Built by Aura Digital Fiji" /></div>
             <div className="mt-10 border-t border-white/10 pt-7"><p className="adi-kicker">Why Aura Intelligence</p><p className="mt-3 text-sm leading-7 text-white/48">Global technology reporting filtered for practical relevance to businesses in Fiji and the Pacific.</p><Link href="/editorial-standards" className="mt-5 inline-block text-[10px] font-black uppercase tracking-[0.13em] text-white">How we publish →</Link></div>
           </aside>
         </div>
       </section>
 
+      <AuraWideBand title="From technology news to practical implementation." />
       <NewsFooter />
     </main>
   );

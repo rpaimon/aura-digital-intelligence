@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Clock3, ExternalLink, ShieldCheck } from "lucide
 import { ArticleMarkdown } from "@/components/public-news/article-markdown";
 import { StoryCard, StoryVisual, CategoryChip, headlineLengthClass } from "@/components/public-news/framagz-ui";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
+import { AuraStudioCompact, AuraWideBand } from "@/components/public-news/aura-placement";
 import { ReadingProgress } from "@/components/public-news/reading-progress";
 import { ShareBar } from "@/components/public-news/share-bar";
 import { articlePath, auraServiceForArticle, canonicalArticleUrl, displayCategory, getPublishedArticleBySlug, getRelatedArticles, getPublishedArticles, readingTime, siteUrl, stripSourcesSection } from "@/lib/news/public";
@@ -69,6 +70,20 @@ function AuraImplementationNote({ articleSlug, cta }: { articleSlug: string; cta
           <p className="adi-reading-copy mt-2 max-w-2xl text-sm leading-6">{cta.text}</p>
         </div>
         <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(articleSlug)}`} className="inline-flex shrink-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>
+      </div>
+    </aside>
+  );
+}
+
+function AuraPublisherNote({ articleSlug }: { articleSlug: string }) {
+  return (
+    <aside className="adi-aura-inline adi-aura-inline-secondary">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-50">Publisher · Aura Digital Fiji</p>
+          <h3 className="mt-2 text-lg font-black leading-tight tracking-[-0.03em]">Web, email, security, apps and IT for Fiji businesses.</h3>
+        </div>
+        <a href={`/go/aura?service=web&article=${encodeURIComponent(articleSlug)}`} className="inline-flex shrink-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">Explore services <ArrowRight size={13}/></a>
       </div>
     </aside>
   );
@@ -185,8 +200,10 @@ export default async function ArticlePage({ params }: { params: Params }) {
               {article.excerpt && <p className="adi-reading-copy max-w-[70ch] border-b pb-6 text-[1.08rem] font-black leading-[1.5] tracking-[-0.02em] sm:text-[1.28rem]" style={{ borderColor: "var(--adi-reading-line)" }}>{article.excerpt}</p>}
 
               <div className="adi-article-prose mt-7">
-                <ArticleMarkdown content={content} />
-                <AuraImplementationNote articleSlug={article.slug} cta={cta} />
+                <ArticleMarkdown content={content} inserts={[
+                  <AuraImplementationNote key="aura-context" articleSlug={article.slug} cta={cta} />,
+                  <AuraPublisherNote key="aura-publisher" articleSlug={article.slug} />,
+                ]} />
               </div>
 
               {sources.length > 0 && (
@@ -200,6 +217,8 @@ export default async function ArticlePage({ params }: { params: Params }) {
             <aside className="adi-article-sidebar hidden space-y-7 border-l pl-7 lg:block" style={{ borderColor: "var(--adi-reading-line)" }}>
               {latest.length > 1 && <div className="adi-sidebar-module"><p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-45">Latest intelligence</p><div className="mt-2 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{latest.filter((item)=>item.id!==article.id).slice(0,4).map((item)=><Link key={item.id} href={articlePath(item)} className="block py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-38">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight">{item.title}</p></Link>)}</div></div>}
 
+              <AuraStudioCompact eyebrow="Publisher services" />
+
               <div className="adi-sidebar-module">
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em]"><ShieldCheck size={15}/> Publication standard</div>
                 <div className="adi-reading-copy mt-4 space-y-3 text-xs leading-6"><p>Independent-source verification before publication.</p><p>Originality checks protect against excessive phrase overlap.</p><p>Final quality review gates every published story.</p></div>
@@ -209,6 +228,8 @@ export default async function ArticlePage({ params }: { params: Params }) {
           </div>
         </section>
       </article>
+
+      <AuraWideBand title="Need help applying this technology to your business?" />
 
       {related.length > 0 && <section className="border-t border-white/10"><div className="adi-article-wide px-0 py-9 sm:px-6 lg:px-8 lg:py-12"><div className="mb-5 flex items-end justify-between gap-4 px-4 sm:px-0"><div><p className="adi-kicker">Continue reading</p><h2 className="adi-section-title mt-1">Related intelligence</h2></div><Link href="/news" className="text-[10px] font-black uppercase tracking-[0.12em] text-white/45 hover:text-white">All news →</Link></div><div className="adi-story-grid three">{related.slice(0,3).map((item)=><StoryCard key={item.id} article={item} compact />)}</div></div></section>}
 
