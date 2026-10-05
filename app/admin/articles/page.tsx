@@ -114,7 +114,7 @@ export default async function ArticlesPage() {
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-gray-500"><ShieldCheck size={14} /> Final publication gate</div>
               <h2 className="mt-1 text-2xl font-black">Verified, written, checked, then published</h2>
             </div>
-            <p className="max-w-xl text-sm leading-6 text-gray-500">A HOLD or REJECT story cannot reach this page as a publishable article. The final gate is deterministic and does not spend another AI call.</p>
+            <p className="max-w-xl text-sm leading-6 text-gray-500">A HOLD or REJECT story cannot reach this page as a publishable article. The final gate is deterministic and does not require another editorial generation step.</p>
           </div>
 
           {error && <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error.message}</p>}
@@ -193,7 +193,7 @@ export default async function ArticlesPage() {
               );
             })}
 
-            {!rows.length && !error && <div className="py-14 text-center text-gray-500"><FileText className="mx-auto" /><p className="mt-3 font-black text-[#101114]">No article drafts yet</p><p className="mt-1 text-sm">Future APPROVED fact checks will automatically enter the writer and final quality gate.</p></div>}
+            {!rows.length && !error && <div className="py-14 text-center text-gray-500"><FileText className="mx-auto" /><p className="mt-3 font-black text-[#101114]">No article drafts yet</p><p className="mt-1 text-sm">Future APPROVED fact checks will enter the writer and final quality gate.</p></div>}
           </div>
         </div>
       </section>

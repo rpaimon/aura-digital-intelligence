@@ -530,6 +530,16 @@ function providerStatus(env, settings) {
   };
 }
 
+function fijiLocalHour(date = new Date()) {
+  const value = new Intl.DateTimeFormat("en-NZ", {
+    timeZone: FIJI_TIMEZONE,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+  const hour = Number(value);
+  return Number.isFinite(hour) ? hour : 0;
+}
+
 function fijiDayBounds(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: FIJI_TIMEZONE,
@@ -1457,10 +1467,87 @@ Return the complete rewritten article package.
   return { ...result.data, _provider: result.provider, _model: result.model };
 }
 
+function normalizeGeneratedArticle(story, generated, evidenceSources) {
+  const rawTitle = String(generated?.title || story?.title || "Technology update").replace(/\s+/g, " ").trim();
+  const title = rawTitle.length > 85 ? compactHeadlineFallback(rawTitle, 82) : rawTitle.slice(0, 85);
+  const rawSeoTitle = String(generated?.seo_title || title).replace(/\s+/g, " ").trim();
+  const rawSeoDescription = String(generated?.seo_description || generated?.excerpt || "").replace(/\s+/g, " ").trim();
+  const content = appendDeterministicSources(generated?.content, evidenceSources);
+
+  return {
+    title,
+    subtitle: String(generated?.subtitle || "").trim().slice(0, 260),
+    excerpt: String(generated?.excerpt || "").trim().slice(0, 500),
+    content,
+    category: inferArticleCategory(story, generated),
+    seo_title: rawSeoTitle.slice(0, 65),
+    seo_description: rawSeoDescription.slice(0, 170),
+    keywords: String(generated?.keywords || "").replace(/\s+/g, " ").trim().slice(0, 500),
+  };
+}
+
+async function polishArticleForQuality(env, settings, generated, story, safeFacts, constraints, currentQuality) {
+  const prompt = `
+Polish this Aura Digital Intelligence draft so it clears publication-quality checks WITHOUT adding any new factual claim.
+
+NON-NEGOTIABLE FACT RULES:
+- Use ONLY the VERIFIED SAFE FACTS below for event-specific factual statements.
+- Never invent dates, numbers, names, attack details, quotes, impacts or Fiji incidents.
+- Analysis and recommendations must be clearly framed as analysis, not as facts about the event.
+- Do not copy or closely paraphrase source wording.
+- Do not mention AI, automation, prompts, models, pipelines, or how the article was produced.
+- Do not add a Sources section. The application adds verified source links separately.
+
+QUALITY TARGETS:
+- Headline: factual, natural, 55-82 characters where possible, maximum 85.
+- SEO title: maximum 65 characters.
+- SEO description: 110-165 characters.
+- Body: normally 420-750 words; if verified facts are narrow, stay concise rather than padding.
+- Keep these exact section headings:
+  ## What happened
+  ## Why it matters
+  ## What this means for Fiji businesses
+  ## What businesses should do now
+- Keep plain English, useful Fiji business context and practical recommendations.
+
+CURRENT QUALITY SCORE: ${currentQuality?.score || 0}
+ORIGINAL STORY TITLE: ${story?.title || ""}
+
+VERIFIED SAFE FACTS:
+${safeFacts.map((fact, index) => `${index + 1}. ${fact}`).join("\n")}
+
+WRITING CONSTRAINTS:
+${constraints.length ? constraints.map((item) => `- ${item}`).join("\n") : "- None beyond the safe-fact rules."}
+
+CURRENT DRAFT:
+TITLE: ${generated?.title || ""}
+SUBTITLE: ${generated?.subtitle || ""}
+EXCERPT: ${generated?.excerpt || ""}
+SEO TITLE: ${generated?.seo_title || ""}
+SEO DESCRIPTION: ${generated?.seo_description || ""}
+CONTENT:
+${String(generated?.content || "").slice(0, 12000)}
+
+Return the complete polished article package as one JSON object.
+`;
+
+  const result = await aiJson(
+    env,
+    settings,
+    "writer",
+    "You are a careful senior editor. Improve structure, clarity and metadata without introducing new facts. Return exactly the requested JSON object.",
+    prompt,
+    ARTICLE_SCHEMA,
+    { maxTokens: 2400, temperature: 0.2 }
+  );
+
+  return { ...result.data, _provider: result.provider, _model: result.model };
+}
+
 async function enqueueArticleJob(env, storyId, priority = 70) {
   const existing = await sb(
     env,
-    `jobs?select=id&job_type=eq.write_article&story_id=eq.${encodeURIComponent(storyId)}&status=in.(queued,processing,completed)&limit=1`
+    `jobs?select=id&job_type=eq.write_article&story_id=eq.${encodeURIComponent(storyId)}&status=in.(queued,processing)&limit=1`
   );
 
   if (existing.ok && (await existing.json()).length) return false;
@@ -1841,21 +1928,55 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
       originality = evaluateOriginality(generated.content, sourceFingerprints, settings);
     }
 
-    const title = String(generated.title || story.title).replace(/\s+/g, " ").trim().slice(0, 120);
-    const slug = await buildUniqueArticleSlug(env, title, story.id);
-    const content = appendDeterministicSources(generated.content, evidenceSources);
-    const normalizedArticle = {
-      title,
-      subtitle: String(generated.subtitle || "").trim().slice(0, 260),
-      excerpt: String(generated.excerpt || "").trim().slice(0, 500),
-      content,
-      category: inferArticleCategory(story, generated),
-      seo_title: String(generated.seo_title || title).replace(/\s+/g, " ").trim().slice(0, 70),
-      seo_description: String(generated.seo_description || generated.excerpt || "").replace(/\s+/g, " ").trim().slice(0, 180),
-      keywords: String(generated.keywords || "").replace(/\s+/g, " ").trim().slice(0, 500),
-    };
+    let normalizedArticle = normalizeGeneratedArticle(story, generated, evidenceSources);
+    let quality = articleQualityScore(normalizedArticle, factCheck);
+    let qualityRepairCount = 0;
 
-    const quality = articleQualityScore(normalizedArticle, factCheck);
+    // A verified story should not get stranded just because the first draft misses
+    // a structural writing target. Give the editor one bounded polish pass while
+    // preserving the same fact bank and verification thresholds.
+    if (quality.score < 85) {
+      try {
+        generated = await polishArticleForQuality(
+          env,
+          settings,
+          generated,
+          story,
+          safeFacts,
+          constraints,
+          quality
+        );
+        qualityRepairCount = 1;
+        originality = evaluateOriginality(generated.content, sourceFingerprints, settings);
+
+        while (
+          settings.originalityGuardEnabled &&
+          !originality.passed &&
+          originality.evaluable &&
+          originalityRewriteCount < settings.originalityMaxRewrites
+        ) {
+          originalityRewriteCount += 1;
+          generated = await rewriteArticleForOriginality(
+            env,
+            settings,
+            generated,
+            story,
+            safeFacts,
+            constraints,
+            originalityRewriteCount
+          );
+          originality = evaluateOriginality(generated.content, sourceFingerprints, settings);
+        }
+
+        normalizedArticle = normalizeGeneratedArticle(story, generated, evidenceSources);
+        quality = articleQualityScore(normalizedArticle, factCheck);
+      } catch {
+        // Keep the verified first draft. The final gate will hold it rather than
+        // turning a temporary provider problem into a failed story job.
+      }
+    }
+
+    const slug = await buildUniqueArticleSlug(env, normalizedArticle.title, story.id);
     const authorId = await getDefaultAuthorId(env);
     const image = await fetchArticleImage(env, story, normalizedArticle);
     const status = quality.score >= 85 && originality.passed ? "review" : "draft";
@@ -1908,6 +2029,7 @@ Return one JSON object with a headline, subtitle, excerpt, Markdown body, catego
         originality_passed: originality.passed,
         originality_score: originality.score,
         originality_rewrite_count: originalityRewriteCount,
+        quality_repair_count: qualityRepairCount,
       },
       seo_keywords: normalizedArticle.keywords
         .split(",")
@@ -2032,7 +2154,7 @@ async function getFinalQualityCandidates(env, limit) {
   // This fixes stale decisions when a later writer/rewrite updates content/sources.
   const scanLimit = Math.max(20, Number(limit || 4) * 8);
   const query = new URLSearchParams({
-    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,originality_score,originality_passed,originality_notes,originality_rewrite_count,final_quality_checked_at,updated_at",
+    select: "id,story_id,fact_check_id,slug,title,excerpt,content,seo_title,seo_description,status,quality_score,quality_notes,originality_score,originality_passed,originality_notes,originality_rewrite_count,final_quality_passed,final_quality_checked_at,updated_at",
     status: "in.(draft,review)",
     order: "updated_at.desc",
     limit: String(scanLimit),
@@ -2042,13 +2164,18 @@ async function getFinalQualityCandidates(env, limit) {
     throw new Error(`Final quality queue fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
   }
   const rows = await response.json();
+  const retryCutoff = Date.now() - 6 * 60 * 60 * 1000;
   return rows
     .filter((article) => {
+      if (article.final_quality_passed === true) return false;
       if (!article.final_quality_checked_at) return true;
       const checkedAt = Date.parse(String(article.final_quality_checked_at || ""));
       const updatedAt = Date.parse(String(article.updated_at || ""));
       if (!Number.isFinite(checkedAt)) return true;
-      return Number.isFinite(updatedAt) && updatedAt > checkedAt;
+      if (Number.isFinite(updatedAt) && updatedAt > checkedAt) return true;
+      // Re-check a strong REVIEW article periodically. This permanently repairs
+      // legacy/stale final-gate decisions without looping every 15 minutes.
+      return article.status === "review" && Number(article.quality_score || 0) >= 85 && checkedAt < retryCutoff;
     })
     .slice(0, limit);
 }
@@ -2059,7 +2186,7 @@ async function getFactCheckForQualityGate(env, article) {
     : `story_id=eq.${encodeURIComponent(article.story_id)}`;
   const response = await sb(
     env,
-    `fact_checks?select=id,verdict,confidence,independent_source_count,safe_facts,conflicts,missing_evidence&${filter}&limit=1`
+    `fact_checks?select=id,verdict,confidence,independent_source_count,safe_facts,conflicts,missing_evidence,evidence_sources&${filter}&limit=1`
   );
   if (!response.ok) {
     throw new Error(`Final quality fact-check fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
@@ -2075,6 +2202,33 @@ async function getArticleSourceCount(env, articleId) {
   );
   if (!response.ok) return 0;
   return (await response.json()).length;
+}
+
+async function syncArticleSourcesFromFactCheck(env, articleId, factCheck) {
+  const evidenceSources = Array.isArray(factCheck?.evidence_sources) ? factCheck.evidence_sources : [];
+  const rows = evidenceSources
+    .filter((source) => source?.url)
+    .slice(0, 8)
+    .map((source) => ({
+      article_id: articleId,
+      source_url: source.url,
+      source_name: String(source.source_name || source.domain || "Independent source").slice(0, 180),
+      source_type: "fact-check-evidence",
+      citation_text: String(source.title || "Independent coverage").slice(0, 300),
+    }));
+  if (!rows.length) return 0;
+
+  const remove = await sb(env, `article_sources?article_id=eq.${encodeURIComponent(articleId)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
+  });
+  if (!remove.ok) return 0;
+  const save = await sb(env, "article_sources", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(rows),
+  });
+  return save.ok ? rows.length : 0;
 }
 
 function countEmbeddedArticleSources(content) {
@@ -2171,11 +2325,17 @@ async function runFinalQualityGate(env, settings) {
 
   for (const article of articles) {
     try {
-      const [factCheck, databaseSourceCount] = await Promise.all([
+      const [factCheck, initialDatabaseSourceCount] = await Promise.all([
         getFactCheckForQualityGate(env, article),
         getArticleSourceCount(env, article.id),
       ]);
       if (!factCheck) throw new Error("No fact check found for final quality gate");
+
+      let databaseSourceCount = initialDatabaseSourceCount;
+      if (databaseSourceCount < settings.minimumSourceCount) {
+        const synced = await syncArticleSourcesFromFactCheck(env, article.id, factCheck);
+        if (synced > databaseSourceCount) databaseSourceCount = synced;
+      }
 
       let candidateArticle = article;
       const preRepairQuality = articleQualityScore(candidateArticle, factCheck);
@@ -3561,6 +3721,63 @@ async function getDailyPipelineStats(env, settings) {
   };
 }
 
+async function getPipelineDiagnostics(env) {
+  const settings = await getSettings(env);
+  const stats = await getDailyPipelineStats(env, settings);
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [candidateResponse, reviewResponse, approvedResponse, failedResponse, latestPublishedResponse, latestJobResponse] = await Promise.all([
+    sb(env, "stories?select=id,priority_score&decision=eq.research&status=eq.scored&verification_status=is.null&order=priority_score.desc&limit=100"),
+    sb(env, "articles?select=id,status,quality_score,final_quality_passed,updated_at&status=in.(draft,review)&order=updated_at.desc&limit=30"),
+    sb(env, "articles?select=id,status,final_quality_passed,originality_passed&status=eq.approved&final_quality_passed=eq.true&originality_passed=eq.true&limit=20"),
+    sb(env, `jobs?select=id,job_type,status,created_at&status=eq.failed&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=30`),
+    sb(env, "articles?select=id,published_at&status=eq.published&order=published_at.desc&limit=1"),
+    sb(env, "jobs?select=id,job_type,status,created_at,finished_at&order=created_at.desc&limit=1"),
+  ]);
+
+  const candidates = candidateResponse.ok ? await candidateResponse.json() : [];
+  const reviews = reviewResponse.ok ? await reviewResponse.json() : [];
+  const approved = approvedResponse.ok ? await approvedResponse.json() : [];
+  const failed = failedResponse.ok ? await failedResponse.json() : [];
+  const latestPublished = latestPublishedResponse.ok ? (await latestPublishedResponse.json())[0] || null : null;
+  const latestJob = latestJobResponse.ok ? (await latestJobResponse.json())[0] || null : null;
+  const normalCandidates = candidates.filter((row) => Number(row.priority_score || 0) >= settings.candidateMinPriority).length;
+  const recoveryCandidates = candidates.filter((row) => Number(row.priority_score || 0) >= Math.max(55, settings.candidateMinPriority - 10)).length;
+  const strongReviews = reviews.filter((row) => Number(row.quality_score || 0) >= 85).length;
+
+  let likelyBlocker = "pipeline-moving";
+  if (stats.articlesPublishedToday >= settings.dailyArticleTarget) likelyBlocker = "daily-target-reached";
+  else if (approved.length > 0) likelyBlocker = "publishable-article-waiting";
+  else if (stats.activeWriterJobs > 0) likelyBlocker = "writer-running";
+  else if (stats.activeFactJobs > 0) likelyBlocker = "fact-check-running";
+  else if (strongReviews > 0) likelyBlocker = "final-quality-recheck-needed";
+  else if (normalCandidates === 0 && recoveryCandidates === 0) likelyBlocker = "candidate-pool-empty";
+  else if (stats.aiFactChecksToday >= settings.maxAiCandidatesPerDay) likelyBlocker = "normal-ai-budget-used-recovery-reserve-available";
+  else likelyBlocker = "verification-quality-filter";
+
+  return {
+    ok: true,
+    stage: "free-acquisition-engine-v2.14-stability-and-recovery",
+    fijiDate: stats.fijiDate,
+    likelyBlocker,
+    target: settings.dailyArticleTarget,
+    publishedToday: stats.articlesPublishedToday,
+    approvalsToday: stats.approvalsToday,
+    factChecksToday: stats.factChecksToday,
+    sourcePoorChecksToday: stats.sourcePoorChecksToday,
+    activeFactJobs: stats.activeFactJobs,
+    activeWriterJobs: stats.activeWriterJobs,
+    normalCandidatePool: normalCandidates,
+    recoveryCandidatePool: recoveryCandidates,
+    strongReviewsWaiting: strongReviews,
+    publishableApprovedWaiting: approved.length,
+    failedJobsLast24h: failed.length,
+    latestPublishedAt: latestPublished?.published_at || null,
+    latestJob: latestJob ? { type: latestJob.job_type, status: latestJob.status, createdAt: latestJob.created_at, finishedAt: latestJob.finished_at } : null,
+    recoveryModeAvailable: fijiLocalHour() >= 10 && stats.articlesPublishedToday < settings.dailyArticleTarget,
+  };
+}
+
 function candidateCoverageDelayMinutes(candidate) {
   const sourceType = String(candidate?.sources?.source_type || "").toLowerCase();
   if (sourceType === "company" || sourceType === "government") return 75;
@@ -3574,63 +3791,82 @@ function candidateAgeMinutes(candidate) {
   return Math.max(0, (Date.now() - timestamp) / 60000);
 }
 
-async function queueBestDailyCandidate(env, settings) {
-  const stats = await getDailyPipelineStats(env, settings);
-
-  // The target is two actually published articles. A quality-passed draft is
-  // progress, but it must not stop acquisition before the publishing target is met.
-  if (stats.articlesPublishedToday >= settings.dailyArticleTarget) {
-    return { queued: false, reason: "daily-published-target-reached", ...stats };
-  }
-
-  // max_ai_candidates_per_day is an AI budget. Source-poor HOLDs where the AI
-  // verifier never ran must not consume it; that was the v2/v2.1 starvation bug.
-  if (stats.aiFactChecksToday >= settings.maxAiCandidatesPerDay) {
-    return { queued: false, reason: "daily-ai-candidate-cap-reached", ...stats };
-  }
-
-  // Separate bounded safety valve for free source-retrieval scans. This keeps
-  // the target-driven loop from running forever on a day with no verifiable news.
-  if (stats.factChecksToday >= stats.verificationScanCap) {
-    return { queued: false, reason: "daily-verification-scan-cap-reached", ...stats };
-  }
-
-  if (stats.activeWriterJobs > 0) {
-    return { queued: false, reason: "writer-has-priority", ...stats };
-  }
-  if (stats.activeFactJobs >= settings.maxFactChecks) {
-    return { queued: false, reason: "fact-check-cap-active", ...stats };
-  }
-
+async function fetchDailyCandidatePool(env, minPriority, limit = 36) {
   const q = new URLSearchParams({
     select: "id,title,priority_score,published_at,discovered_at,category,source_url,sources(source_type)",
     decision: "eq.research",
     status: "eq.scored",
     verification_status: "is.null",
-    priority_score: `gte.${settings.candidateMinPriority}`,
+    priority_score: `gte.${minPriority}`,
     order: "priority_score.desc,published_at.desc",
-    limit: "12",
+    limit: String(limit),
   });
   const response = await sb(env, `stories?${q.toString()}`);
   if (!response.ok) {
     throw new Error(`Daily candidate fetch failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
   }
-  const candidates = await response.json();
-  if (!candidates.length) {
-    return { queued: false, reason: "no-qualified-candidate", ...stats };
+  return response.json();
+}
+
+async function queueBestDailyCandidate(env, settings) {
+  const stats = await getDailyPipelineStats(env, settings);
+
+  if (stats.articlesPublishedToday >= settings.dailyArticleTarget) {
+    return { queued: false, reason: "daily-published-target-reached", ...stats };
   }
 
-  // Do not burn a fresh first-party announcement into HOLD before independent
-  // publishers have had a reasonable chance to cover it. Scan the pool for the
-  // highest-priority candidate whose coverage window has matured.
-  const readyCandidates = candidates.filter(
+  // The normal budget remains unchanged. If the Fiji day is already well underway
+  // and the publication target is still unmet, unlock a small bounded recovery
+  // reserve instead of letting the newsroom sit idle for the rest of the day.
+  const recoveryMode = fijiLocalHour() >= 10 && stats.articlesPublishedToday < settings.dailyArticleTarget;
+  const effectiveAiCap = recoveryMode
+    ? Math.min(24, settings.maxAiCandidatesPerDay + 8)
+    : settings.maxAiCandidatesPerDay;
+  const effectiveScanCap = recoveryMode
+    ? Math.min(96, stats.verificationScanCap + 24)
+    : stats.verificationScanCap;
+
+  if (stats.aiFactChecksToday >= effectiveAiCap) {
+    return { queued: false, reason: "daily-ai-candidate-cap-reached", recoveryMode, effectiveAiCap, ...stats };
+  }
+
+  if (stats.factChecksToday >= effectiveScanCap) {
+    return { queued: false, reason: "daily-verification-scan-cap-reached", recoveryMode, effectiveScanCap, ...stats };
+  }
+
+  if (stats.activeWriterJobs > 0) {
+    return { queued: false, reason: "writer-has-priority", recoveryMode, ...stats };
+  }
+  if (stats.activeFactJobs >= settings.maxFactChecks) {
+    return { queued: false, reason: "fact-check-cap-active", recoveryMode, ...stats };
+  }
+
+  let candidates = await fetchDailyCandidatePool(env, settings.candidateMinPriority, 36);
+  let readyCandidates = candidates.filter(
     (candidate) => candidateAgeMinutes(candidate) >= candidateCoverageDelayMinutes(candidate)
   );
+  let selectorThreshold = settings.candidateMinPriority;
+
+  // When the normal priority pool cannot keep the daily target moving, widen only
+  // the editorial-priority pool. Verification requirements remain exactly the same.
+  if (!readyCandidates.length && recoveryMode) {
+    selectorThreshold = Math.max(55, settings.candidateMinPriority - 10);
+    candidates = await fetchDailyCandidatePool(env, selectorThreshold, 48);
+    readyCandidates = candidates.filter(
+      (candidate) => candidateAgeMinutes(candidate) >= candidateCoverageDelayMinutes(candidate)
+    );
+  }
+
+  if (!candidates.length) {
+    return { queued: false, reason: "no-qualified-candidate", recoveryMode, selectorThreshold, ...stats };
+  }
 
   if (!readyCandidates.length) {
     return {
       queued: false,
       reason: "waiting-for-independent-coverage",
+      recoveryMode,
+      selectorThreshold,
       waitingCandidates: candidates.length,
       nextCandidateDelayMinutes: Math.max(
         1,
@@ -3661,7 +3897,11 @@ async function queueBestDailyCandidate(env, settings) {
     priority: candidate.priority_score,
     sourceType: candidate?.sources?.source_type || null,
     candidateAgeMinutes: Math.round(candidateAgeMinutes(candidate)),
-    reason: "target-driven-verification-candidate",
+    recoveryMode,
+    selectorThreshold,
+    effectiveAiCap,
+    effectiveScanCap,
+    reason: recoveryMode ? "target-recovery-verification-candidate" : "target-driven-verification-candidate",
     ...stats,
   };
 }
@@ -4444,7 +4684,6 @@ async function recoverStaleJobs(env) {
 }
 
 async function backfillOneMissingArticleImage(env) {
-  if (!env.PEXELS_API_KEY) return null;
   const response = await sb(
     env,
     "articles?select=id,story_id,title,category,featured_image_url,stories(id,title,description,category)&featured_image_url=is.null&status=in.(review,approved,published)&order=created_at.desc&limit=1"
@@ -4469,6 +4708,29 @@ async function backfillOneMissingArticleImage(env) {
   });
   if (!save.ok) return { articleId: article.id, updated: false };
   return { articleId: article.id, updated: true };
+}
+
+async function recoverApprovedStoriesWithoutArticles(env) {
+  const response = await sb(
+    env,
+    "stories?select=id,priority_score,verified_at&verification_status=eq.approve&status=eq.approved&order=verified_at.desc&limit=20"
+  );
+  if (!response.ok) return [];
+  const stories = await response.json();
+  const recovered = [];
+
+  for (const story of stories) {
+    const articleResponse = await sb(
+      env,
+      `articles?select=id&story_id=eq.${encodeURIComponent(story.id)}&limit=1`
+    );
+    if (articleResponse.ok && (await articleResponse.json()).length) continue;
+
+    const queued = await enqueueArticleJob(env, story.id, Number(story.priority_score || 75));
+    if (queued) recovered.push({ storyId: story.id, action: "writer-requeued" });
+  }
+
+  return recovered;
 }
 
 async function processQueuedArticles(env, thresholds, failures) {
@@ -4501,7 +4763,15 @@ async function runCycle(env) {
     failures.push({ stage: "job-watchdog", error: e instanceof Error ? e.message : String(e) });
   }
 
-  // Approved stories always get first access to free AI providers.
+  let approvedWriterRecovery = [];
+  try {
+    approvedWriterRecovery = await recoverApprovedStoriesWithoutArticles(env);
+  } catch (e) {
+    failures.push({ stage: "approved-writer-recovery", error: e instanceof Error ? e.message : String(e) });
+  }
+
+  // Approved stories always get first access to the writer, including any job
+  // recovered above after a transient queue/save interruption.
   const articlesWrittenFirst = await processQueuedArticles(env, thresholds, failures);
 
   let discovery = null;
@@ -4589,8 +4859,9 @@ async function runCycle(env) {
 
   return {
     ok: failures.length === 0,
-    architecture: "free-acquisition-engine-v2.13-final-quality-refresh",
+    architecture: "free-acquisition-engine-v2.14-stability-and-recovery",
     staleJobsRecovered,
+    approvedWriterRecovery,
     discovery,
     scoredCount: decisions.length,
     decisions,
@@ -4635,10 +4906,10 @@ export default {
         ok: true,
 
         service:
-          "aura-intelligence-automation",
+          "aura-intelligence-newsroom",
 
         stage:
-          "free-acquisition-engine-v2.13-final-quality-refresh",
+          "free-acquisition-engine-v2.14-stability-and-recovery",
 
         architecture: "deterministic-first-ai-last",
         geminiConfigured: Boolean(env.GEMINI_API_KEY),
@@ -4647,6 +4918,14 @@ export default {
         openverseFallbackEnabled: true,
         cloudflareAIFallbackDefault: false,
       });
+    }
+
+    if (url.pathname === "/diagnostics" && request.method === "GET") {
+      try {
+        return Response.json(await getPipelineDiagnostics(env));
+      } catch (e) {
+        return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+      }
     }
 
     if (
@@ -4703,13 +4982,14 @@ export default {
       ok: true,
 
       service:
-        "Aura Digital Intelligence automation",
+        "Aura Digital Intelligence newsroom",
 
       stage:
-        "free-acquisition-engine-v2.13-final-quality-refresh",
+        "free-acquisition-engine-v2.14-stability-and-recovery",
 
       endpoints: [
         "GET /health",
+        "GET /diagnostics",
         "POST /run",
       ],
     });

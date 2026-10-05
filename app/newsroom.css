@@ -820,3 +820,80 @@ html[data-theme="light"] .adi-aura-band { color: #fff; }
   .adi-lead-carousel-media-frame,
   .adi-lead-carousel-copy-animate { animation: none; }
 }
+
+/* v2.14 publisher placement refresh */
+.adi-aura-studio {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--adi-line-strong);
+  border-radius: 1.35rem;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at 92% 4%, color-mix(in srgb, var(--adi-accent) 18%, transparent), transparent 30%),
+    linear-gradient(155deg, color-mix(in srgb, var(--adi-surface) 88%, var(--adi-accent) 12%), var(--adi-surface));
+  box-shadow: 0 18px 50px color-mix(in srgb, var(--adi-fg) 6%, transparent);
+}
+.adi-aura-studio::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--adi-fg) 4%, transparent), transparent 38%);
+}
+.adi-aura-studio > * { position: relative; z-index: 1; }
+.adi-aura-studio-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.adi-aura-studio-mark {
+  display: grid;
+  min-width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border-radius: .9rem;
+  background: var(--adi-fg);
+  color: var(--adi-bg);
+  font-size: .7rem;
+  font-weight: 950;
+  letter-spacing: .06em;
+}
+.adi-aura-service-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.adi-aura-service-grid a {
+  display: flex;
+  min-height: 3.2rem;
+  align-items: center;
+  gap: .55rem;
+  border-top: 1px solid var(--adi-line);
+  padding-top: .65rem;
+  font-size: .66rem;
+  font-weight: 900;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.adi-aura-service-grid a:hover { opacity: .72; transform: translateX(2px); }
+.adi-aura-service-grid span { color: var(--adi-muted); font-size: .58rem; }
+.adi-aura-studio-cta {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-top: 1.1rem;
+  border-radius: 999px;
+  padding: .9rem 1rem;
+  background: var(--adi-fg);
+  color: var(--adi-bg);
+  font-size: .66rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .11em;
+}
+html[data-theme="light"] .adi-aura-studio {
+  box-shadow: 0 18px 45px rgba(18,20,23,.07);
+}
+
+.adi-publisher-card {
+  border: 1px solid var(--adi-line);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--adi-surface) 94%, var(--adi-accent) 6%);
+}

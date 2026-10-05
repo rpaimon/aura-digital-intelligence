@@ -6,12 +6,12 @@ import { useEffect, useState } from "react";
 type Theme = "dark" | "light";
 
 function currentTheme(): Theme {
-  if (typeof document === "undefined") return "dark";
+  if (typeof document === "undefined") return "light";
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => setTheme(currentTheme()), []);
 

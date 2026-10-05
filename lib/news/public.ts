@@ -15,6 +15,7 @@ export type PublicArticle = {
   featured_image_alt: string | null;
   seo_title: string | null;
   seo_description: string | null;
+  seo_keywords?: string[] | null;
   canonical_url: string | null;
   published_at: string | null;
   updated_at: string;
@@ -35,7 +36,7 @@ export type PublicArticle = {
 };
 
 const listFields =
-  "id,story_id,slug,title,subtitle,excerpt,category,featured_image_url,featured_image_credit,featured_image_source_url,featured_image_alt,seo_title,seo_description,canonical_url,published_at,updated_at,created_at,authors(name,slug,bio,avatar_url)";
+  "id,story_id,slug,title,subtitle,excerpt,category,featured_image_url,featured_image_credit,featured_image_source_url,featured_image_alt,seo_title,seo_description,seo_keywords,canonical_url,published_at,updated_at,created_at,authors(name,slug,bio,avatar_url)";
 
 export const TOPIC_HUBS = [
   { slug: "ai", label: "Artificial Intelligence", shortLabel: "AI", keywords: ["ai", "artificial intelligence", "machine learning", "gemini", "openai", "anthropic", "llm"] },
@@ -150,7 +151,7 @@ async function getArticleByStoredSlug(slug: string) {
   const { data, error } = await supabase
     .from("articles")
     .select(
-      "id,story_id,slug,title,subtitle,excerpt,content,category,featured_image_url,featured_image_credit,featured_image_source_url,featured_image_alt,seo_title,seo_description,canonical_url,published_at,updated_at,created_at,authors(name,slug,bio,avatar_url),article_sources(id,source_url,source_name,source_type,citation_text)"
+      "id,story_id,slug,title,subtitle,excerpt,content,category,featured_image_url,featured_image_credit,featured_image_source_url,featured_image_alt,seo_title,seo_description,seo_keywords,canonical_url,published_at,updated_at,created_at,authors(name,slug,bio,avatar_url),article_sources(id,source_url,source_name,source_type,citation_text)"
     )
     .eq("status", "published")
     .eq("slug", slug)

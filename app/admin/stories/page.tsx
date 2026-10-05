@@ -51,7 +51,7 @@ export default async function StoriesPage() {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">Automation monitor</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">Discovery monitor</p>
             <h1 className="mt-1 text-xl font-black">Story Inbox</h1>
           </div>
         </div>
@@ -61,7 +61,7 @@ export default async function StoriesPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Latest loaded" value={stories.length} />
           <Stat label="New discoveries" value={discovered} />
-          <Stat label="AI scored" value={scored} />
+          <Stat label="Scored" value={scored} />
           <Stat label="Duplicates blocked" value={duplicates} />
           <Stat label="Research selected" value={research} />
         </div>
@@ -72,7 +72,7 @@ export default async function StoriesPage() {
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">RSS Scout output</p>
               <h2 className="mt-1 text-2xl font-black">Latest 100 stories</h2>
             </div>
-            <p className="max-w-lg text-sm leading-6 text-gray-500">This page is only for monitoring. Discovery runs automatically; you do not need to add stories manually.</p>
+            <p className="max-w-lg text-sm leading-6 text-gray-500">This page is only for monitoring. Discovery runs on schedule; you do not need to add stories manually.</p>
           </div>
 
           {error && <p className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error.message}</p>}
@@ -114,7 +114,7 @@ export default async function StoriesPage() {
               <div className="py-14 text-center text-gray-500">
                 <Radio className="mx-auto" />
                 <p className="mt-3 font-black text-[#101114]">No stories discovered yet</p>
-                <p className="mt-1 text-sm">Once the RSS Scout runs, new stories will appear here automatically.</p>
+                <p className="mt-1 text-sm">Once the RSS Scout runs, new stories will appear here.</p>
               </div>
             )}
           </div>

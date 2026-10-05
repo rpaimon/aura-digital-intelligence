@@ -66,7 +66,7 @@ export default async function DashboardPage() {
               <span className="rounded-full bg-emerald-400/15 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300">Target 2/day</span>
             </div>
             <h2 className="mt-4 max-w-2xl text-2xl font-black tracking-[-0.04em] sm:text-3xl">Discovery → verification → article → publication.</h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58">The backend pipeline is running automatically. Use this admin area to monitor decisions, inspect evidence, review article quality, manage sources and confirm what is live.</p>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58">The newsroom workflow is active. Use this admin area to monitor decisions, inspect evidence, review article quality, manage sources and confirm what is live.</p>
             <div className="mt-6 grid gap-2 sm:grid-cols-4">
               <Link href="/admin/stories" className="rounded-xl bg-white/10 px-4 py-3 text-xs font-black hover:bg-white/20">Story inbox</Link>
               <Link href="/admin/fact-checks" className="rounded-xl bg-white/10 px-4 py-3 text-xs font-black hover:bg-white/20">Fact checks</Link>

@@ -1,0 +1,32 @@
+Aura Digital Intelligence v2.14 — Stability, Social Preview, SEO & Publisher Refresh
+
+BACKEND STABILITY
+- Keeps the locked verification requirements: minimum 2 independent sources, confidence 75+, no unverified/conflicted claims.
+- Keeps writer threshold 85, originality guard, final quality minimum 90, and daily target 2.
+- Adds one bounded article quality-polish pass for verified stories whose first draft misses structural writing targets.
+- Requeues approved stories that have no article after a transient interruption.
+- Writer queue no longer treats an old completed job as a permanent blocker when the article is missing.
+- Final quality gate rechecks strong legacy REVIEW articles after a cooldown and always evaluates the newest content.
+- Repairs missing article_sources rows from the approved fact-check evidence before final quality evaluation.
+- Keeps embedded Sources links as an additional source-count fallback.
+- Removes the Pexels-only restriction from image backfill so Openverse can backfill missing article images.
+- Adds a bounded recovery mode after 10:00 Fiji time when the 2/day publication target is still unmet: wider candidate pool, small priority fallback, and capped extra verification budget. Verification thresholds are NOT lowered.
+- Adds GET /diagnostics for a simple aggregate pipeline status without exposing secrets or article text.
+
+PUBLIC SITE
+- Light theme is now the default. Reader choice is still remembered in local storage.
+- Facebook/WhatsApp/Twitter article metadata now puts the real featured article image first, with the branded OG card as fallback.
+- Dynamic article OG fallback now includes the featured image when available.
+- Article NewsArticle structured data uses the real article image and clearer publisher/isPartOf markup.
+- Home page adds WebSite and Organization structured data.
+- RSS includes article images through Media RSS.
+- Public copy no longer promotes the newsroom as autonomous/automated or talks about AI providers/processes.
+- Aura Digital Fiji placement is redesigned into a clearer publisher-studio module with direct service routes, while duplicate article-side promotion was removed.
+
+DEPLOYMENT
+1. Frontend: replace project files and deploy through your normal GitHub/Vercel flow.
+2. Worker: replace cloudflare-worker/src/index.ts in the REAL live Worker and Save + Deploy.
+3. No new Supabase migration is required for v2.14.
+4. Check /health for stage: free-acquisition-engine-v2.14-stability-and-recovery
+5. Optional: check /diagnostics for current daily target/pipeline blocker.
+6. For an old Facebook share, use Facebook Sharing Debugger and Scrape Again so Meta clears its cached preview.

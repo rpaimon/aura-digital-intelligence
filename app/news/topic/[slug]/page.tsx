@@ -35,7 +35,7 @@ export default async function TopicPage({ params }: { params: Params }) {
           {lead && <div className="border-b border-white/10 py-8 sm:py-10"><SectionHeading eyebrow="Lead coverage" title="Start here" /><EditorialLead article={lead}/></div>}
           {grid.length > 0 && <div className="border-b border-white/10 py-8 sm:py-10"><SectionHeading eyebrow="Featured" title={`More ${topic.label}`} /><div className="adi-story-grid three">{grid.map((article)=><StoryCard key={article.id} article={article} compact />)}</div></div>}
           {rows.length > 0 && <div className="py-8 sm:py-10"><SectionHeading eyebrow="Latest" title="Full stream" /><div>{rows.map((article)=><StoryRow key={article.id} article={article}/>)}</div></div>}
-        </div> : <div className="px-4 py-16 text-center sm:px-0"><h2 className="text-2xl font-black">Monitoring this desk</h2><p className="mt-3 text-sm text-white/40">No published stories yet. Verified coverage will appear here automatically.</p></div>}
+        </div> : <div className="px-4 py-16 text-center sm:px-0"><h2 className="text-2xl font-black">Monitoring this desk</h2><p className="mt-3 text-sm text-white/40">No published stories yet. New verified coverage will appear here when it is ready.</p></div>}
       </section>
       <NewsFooter />
     </main>

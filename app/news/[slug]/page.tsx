@@ -20,11 +20,19 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const canonical = canonicalArticleUrl(article);
   const title = article.seo_title || article.title;
   const description = article.seo_description || article.excerpt || "Verified technology intelligence from Aura Digital Intelligence.";
-  const shareImage = `${canonical}/opengraph-image`;
+  const brandedShareImage = `${canonical}/opengraph-image`;
+  const primaryShareImage = brandedShareImage;
+  const shareImages = article.featured_image_url
+    ? [
+        { url: brandedShareImage, width: 1200, height: 630, type: "image/png", alt: `${article.title} — Aura Digital Intelligence` },
+        { url: article.featured_image_url, alt: article.featured_image_alt || article.title },
+      ]
+    : [{ url: brandedShareImage, width: 1200, height: 630, type: "image/png", alt: `${article.title} — Aura Digital Intelligence` }];
 
   return {
     title,
     description,
+    keywords: article.seo_keywords || undefined,
     authors: [{ name: article.authors?.name || "Aura Intelligence Desk", url: `${siteUrl()}/authors/${article.authors?.slug || "aura-digital-intelligence"}` }],
     creator: "Aura Digital Intelligence",
     publisher: "Aura Digital Fiji",
@@ -40,9 +48,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       modifiedTime: article.updated_at || undefined,
       section: displayCategory(article),
       authors: [article.authors?.name || "Aura Intelligence Desk"],
-      images: [{ url: shareImage, width: 1200, height: 630, type: "image/png", alt: `${article.title} — Aura Digital Intelligence` }],
+      images: shareImages,
     },
-    twitter: { card: "summary_large_image", title, description, images: [shareImage] },
+    twitter: { card: "summary_large_image", title, description, images: [primaryShareImage] },
   };
 }
 
@@ -79,7 +87,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
   const latest = await getPublishedArticles(7);
   const cta = auraServiceForArticle(article);
   const canonical = canonicalArticleUrl(article);
-  const shareImage = `${canonical}/opengraph-image`;
+  const shareImage = article.featured_image_url || `${canonical}/opengraph-image`;
   const authorName = article.authors?.name || "Aura Intelligence Desk";
   const authorSlug = article.authors?.slug || "aura-digital-intelligence";
   const category = displayCategory(article);
@@ -96,7 +104,8 @@ export default async function ArticlePage({ params }: { params: Params }) {
     inLanguage: "en-FJ",
     isAccessibleForFree: true,
     author: { "@type": "Organization", name: authorName, url: `${siteUrl()}/authors/${authorSlug}` },
-    publisher: { "@type": "Organization", name: "Aura Digital Intelligence", url: siteUrl() },
+    publisher: { "@type": "Organization", name: "Aura Digital Fiji", url: "https://auradigitalfiji.com" },
+    isPartOf: { "@type": "CreativeWorkSeries", name: "Aura Digital Intelligence", url: siteUrl() },
     image: [shareImage],
   };
 
@@ -139,11 +148,13 @@ export default async function ArticlePage({ params }: { params: Params }) {
                 </div>
               </div>
 
-              <aside className="hidden border-l border-white/10 pl-6 lg:block">
-                <p className="adi-kicker">Publisher</p>
-                <h2 className="mt-2 text-2xl font-black leading-[1.05] tracking-[-0.045em]">Aura Digital Fiji</h2>
-                <p className="mt-3 text-sm leading-7 text-white/48">Aura Intelligence is the editorial technology publication of Aura Digital Fiji, built to turn global developments into useful Fiji business context.</p>
-                <a href="https://auradigitalfiji.com" className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">Visit the publisher <ArrowRight size={13}/></a>
+              <aside className="adi-publisher-card hidden lg:block">
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="adi-kicker">Publisher</p><h2 className="mt-2 text-2xl font-black leading-[1.05] tracking-[-0.045em]">Aura Digital Fiji</h2></div>
+                  <span className="adi-aura-studio-mark" aria-hidden="true">ADF</span>
+                </div>
+                <p className="mt-4 text-sm leading-7 text-white/48">Aura Intelligence is Aura Digital Fiji’s technology publication, focused on clear reporting and practical Fiji business context.</p>
+                <a href="https://auradigitalfiji.com" className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-white">Explore Aura Digital Fiji <ArrowRight size={13}/></a>
               </aside>
             </div>
           </div>
@@ -181,20 +192,12 @@ export default async function ArticlePage({ params }: { params: Params }) {
               {sources.length > 0 && (
                 <section className="mt-12 border-t-2 pt-5" style={{ borderColor: "var(--adi-reading-fg)" }}>
                   <div className="flex items-end justify-between gap-4"><div><p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-45">Independent evidence</p><h2 className="mt-1 text-3xl font-black tracking-[-0.05em]">Sources</h2></div><span className="text-[9px] font-black uppercase tracking-[0.12em] opacity-40">{sources.length} source{sources.length===1?"":"s"}</span></div>
-                  <div className="mt-4 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{sources.map((source,index)=><a key={source.id} href={source.source_url} target="_blank" rel="noreferrer noopener" className="group flex items-start justify-between gap-4 py-4"><div><p className="text-[9px] font-black uppercase tracking-[0.14em] opacity-45">Source {String(index+1).padStart(2,"0")} · {source.source_name}</p><p className="adi-reading-copy mt-2 text-sm font-semibold leading-6">{source.citation_text || "Independent reporting used by the verification pipeline."}</p></div><ExternalLink size={15} className="mt-1 shrink-0 opacity-35"/></a>)}</div>
+                  <div className="mt-4 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{sources.map((source,index)=><a key={source.id} href={source.source_url} target="_blank" rel="noreferrer noopener" className="group flex items-start justify-between gap-4 py-4"><div><p className="text-[9px] font-black uppercase tracking-[0.14em] opacity-45">Source {String(index+1).padStart(2,"0")} · {source.source_name}</p><p className="adi-reading-copy mt-2 text-sm font-semibold leading-6">{source.citation_text || "Independent reporting used to verify this article."}</p></div><ExternalLink size={15} className="mt-1 shrink-0 opacity-35"/></a>)}</div>
                 </section>
               )}
             </div>
 
             <aside className="adi-article-sidebar hidden space-y-7 border-l pl-7 lg:block" style={{ borderColor: "var(--adi-reading-line)" }}>
-              <div className="adi-sidebar-aura">
-                <p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-55">Aura Digital Fiji · Practical next step</p>
-                <h3 className="mt-2 text-2xl font-black leading-[1.05] tracking-[-0.05em]">{cta.title}</h3>
-                <p className="mt-3 text-sm leading-7 opacity-65">{cta.text}</p>
-                <div className="mt-4 border-t border-current/20 pt-3 text-[9px] font-black uppercase tracking-[0.12em] opacity-65">{cta.serviceName}</div>
-                <a href={`/go/aura?service=${encodeURIComponent(cta.key)}&article=${encodeURIComponent(article.slug)}`} className="mt-3 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]">{cta.label} <ArrowRight size={13}/></a>
-              </div>
-
               {latest.length > 1 && <div className="adi-sidebar-module"><p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-45">Latest intelligence</p><div className="mt-2 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{latest.filter((item)=>item.id!==article.id).slice(0,4).map((item)=><Link key={item.id} href={articlePath(item)} className="block py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-38">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight">{item.title}</p></Link>)}</div></div>}
 
               <div className="adi-sidebar-module">

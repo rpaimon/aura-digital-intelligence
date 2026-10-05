@@ -7,7 +7,7 @@ const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://intelligence.auradi
 
 export const metadata: Metadata = {
   title: { default: "Aura Digital Intelligence | Fiji Technology News & Business Intelligence", template: "%s | Aura Digital Intelligence" },
-  description: "Verified technology, AI, cybersecurity, cloud, ecommerce and digital-business intelligence for Fiji and the Pacific.",
+  description: "Independent technology, cybersecurity, cloud, ecommerce and digital-business reporting with practical context for Fiji and the Pacific.",
   applicationName: "Aura Digital Intelligence",
   metadataBase: new URL(baseUrl),
   creator: "Aura Digital Fiji",
@@ -22,14 +22,14 @@ export const metadata: Metadata = {
     locale: "en_FJ",
     type: "website",
     title: "Aura Digital Intelligence",
-    description: "Verified technology intelligence and practical Fiji business context.",
+    description: "Independent technology reporting and practical Fiji business context.",
     url: baseUrl,
     images: [{ url: "/opengraph-image", width: 1200, height: 630, type: "image/png", alt: "Aura Digital Intelligence" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Aura Digital Intelligence",
-    description: "Verified technology intelligence and practical Fiji business context.",
+    description: "Independent technology reporting and practical Fiji business context.",
     images: ["/opengraph-image"],
   },
   robots: indexingEnabled
@@ -40,20 +40,20 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  colorScheme: "dark light",
-  themeColor: "#080a0d",
+  colorScheme: "light dark",
+  themeColor: "#f6f3ec",
 };
 
 const themeScript = `
 (function(){
   try {
     var saved = localStorage.getItem('adi-theme');
-    var theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+    var theme = saved === 'light' || saved === 'dark' ? saved : 'light';
     document.documentElement.dataset.theme = theme;
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', theme === 'light' ? '#f6f3ec' : '#080a0d');
   } catch (_) {
-    document.documentElement.dataset.theme = 'dark';
+    document.documentElement.dataset.theme = 'light';
   }
 })();`;
 

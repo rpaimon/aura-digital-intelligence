@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Fiji Technology News & Business Intelligence",
-  description: "Verified AI, cybersecurity, cloud, ecommerce and digital-business news translated into practical context for Fiji businesses.",
+  description: "Independent technology, cybersecurity, cloud, ecommerce and digital-business reporting translated into practical context for Fiji businesses.",
   alternates: { canonical: siteUrl() },
   openGraph: {
     type: "website",
@@ -61,8 +61,27 @@ export default async function Home() {
     imageAlt: article.featured_image_alt || article.title,
   }));
 
+  const websiteLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Aura Digital Intelligence",
+    alternateName: "Aura Intelligence",
+    url: siteUrl(),
+    inLanguage: "en-FJ",
+    publisher: { "@type": "Organization", name: "Aura Digital Fiji", url: "https://auradigitalfiji.com" },
+  };
+  const publisherLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Aura Digital Fiji",
+    url: "https://auradigitalfiji.com",
+    publishingPrinciples: `${siteUrl()}/editorial-standards`,
+  };
+
   return (
     <main className="adi-public-shell min-h-screen">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteLd).replace(/</g, "\\u003c") }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(publisherLd).replace(/</g, "\\u003c") }} />
       <NewsHeader />
 
       {leadSlides.length > 0 ? (
@@ -72,7 +91,7 @@ export default async function Home() {
           </div>
         </section>
       ) : (
-        <section className="adi-noise border-b border-white/10 px-4 py-20 text-center"><h1 className="adi-display">Aura Intelligence</h1><p className="mt-4 text-white/45">Verified technology coverage will appear here automatically.</p></section>
+        <section className="adi-noise border-b border-white/10 px-4 py-20 text-center"><h1 className="adi-display">Aura Intelligence</h1><p className="mt-4 text-white/45">New verified technology coverage will appear here as it is published.</p></section>
       )}
 
       {topStories.length > 0 && (
@@ -120,19 +139,23 @@ export default async function Home() {
             <h2 className="mt-2 text-3xl font-black tracking-[-0.055em]">Reader picks</h2>
             <div className="mt-4">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>
 
-            <div className="adi-aura-editorial mt-8">
-              <div className="flex items-center justify-between gap-3">
-                <div><p className="adi-kicker">Published by</p><h3 className="mt-1 text-xl font-black tracking-[-0.045em]">Aura Digital Fiji</h3></div>
-                <span className="adi-aura-monogram" aria-hidden="true">A</span>
+            <div className="adi-aura-studio mt-8">
+              <div className="adi-aura-studio-topline">
+                <div>
+                  <p className="adi-kicker">Publisher studio</p>
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] opacity-45">Aura Digital Fiji</p>
+                </div>
+                <span className="adi-aura-studio-mark" aria-hidden="true">ADF</span>
               </div>
-              <p className="mt-4 text-sm leading-7 opacity-65">Aura Intelligence explains the signal. Aura Digital Fiji helps businesses turn it into a working digital system.</p>
-              <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-black uppercase tracking-[0.11em]">
-                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Web & ecommerce</a>
-                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Security & care</a>
-                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Business email</a>
-                <a href="https://auradigitalfiji.com" className="border-t border-current/20 pt-2">Apps & IT systems</a>
+              <h3 className="mt-5 text-[1.8rem] font-black leading-[1.02] tracking-[-0.055em]">Turn digital change into something your business can use.</h3>
+              <p className="mt-4 text-sm leading-7 opacity-65">Custom websites, ecommerce, mobile apps, business email, security and practical IT systems for Fiji businesses.</p>
+              <div className="adi-aura-service-grid mt-5">
+                <a href="https://auradigitalfiji.com/web-design-development-fiji"><span>01</span> Web & ecommerce</a>
+                <a href="https://auradigitalfiji.com/website-management-security-fiji"><span>02</span> Security & care</a>
+                <a href="https://auradigitalfiji.com/business-email-hosting-fiji"><span>03</span> Business email</a>
+                <a href="https://auradigitalfiji.com/custom-mobile-app-fiji"><span>04</span> Apps & systems</a>
               </div>
-              <a href="https://auradigitalfiji.com" className="mt-5 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.13em]">Visit Aura Digital Fiji <ArrowUpRight size={14}/></a>
+              <a href="https://auradigitalfiji.com" className="adi-aura-studio-cta">Explore Aura Digital Fiji <ArrowUpRight size={14}/></a>
             </div>
 
             <div className="mt-8 border-t border-white/10 pt-7">

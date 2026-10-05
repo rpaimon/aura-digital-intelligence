@@ -113,7 +113,7 @@ export default async function FactChecksPage() {
               <h2 className="mt-1 text-2xl font-black">Claim-level evidence review</h2>
             </div>
             <p className="max-w-xl text-sm leading-6 text-gray-500">
-              APPROVE requires multiple independent sources and the configured confidence threshold. Weak or conflicting evidence is automatically held back from writing.
+              APPROVE requires multiple independent sources and the configured confidence threshold. Weak or conflicting evidence is held back from writing.
             </p>
           </div>
 
@@ -198,7 +198,7 @@ export default async function FactChecksPage() {
               <div className="py-14 text-center text-gray-500">
                 <SearchCheck className="mx-auto" />
                 <p className="mt-3 font-black text-[#101114]">No fact checks yet</p>
-                <p className="mt-1 text-sm">Completed research packages will be verified automatically.</p>
+                <p className="mt-1 text-sm">Completed research packages will move into verification.</p>
               </div>
             )}
           </div>

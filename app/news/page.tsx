@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "All Technology News & Intelligence",
-  description: "All verified technology, AI, cybersecurity, cloud and digital-business intelligence from Aura Digital Intelligence.",
+  description: "All technology, cybersecurity, cloud and digital-business reporting from Aura Digital Intelligence.",
   alternates: { canonical: `${siteUrl()}/news` },
   openGraph: { type: "website", siteName: "Aura Digital Intelligence", title: "All News | Aura Digital Intelligence", description: "Verified technology intelligence for Fiji and the Pacific.", url: `${siteUrl()}/news`, images: [{ url: `${siteUrl()}/opengraph-image`, width: 1200, height: 630, type: "image/png" }] },
   twitter: { card: "summary_large_image", title: "All News | Aura Digital Intelligence", description: "Verified technology intelligence for Fiji and the Pacific.", images: [`${siteUrl()}/opengraph-image`] },

@@ -43,7 +43,7 @@ export default async function ResearchPage() {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">Autonomous newsroom</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">Newsroom workflow</p>
             <h1 className="mt-1 text-xl font-black">Research Queue</h1>
           </div>
         </div>
@@ -53,7 +53,7 @@ export default async function ResearchPage() {
         <div className="rounded-3xl border border-[#e5e1db] bg-white p-6">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">AI research packages</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500">Research packages</p>
               <h2 className="mt-1 text-2xl font-black">Stories selected for deeper research</h2>
             </div>
             <div className="flex items-center gap-2">
@@ -92,7 +92,7 @@ export default async function ResearchPage() {
               <div className="py-14 text-center text-gray-500">
                 <FlaskConical className="mx-auto" />
                 <p className="mt-3 font-black text-[#101114]">No research packages yet</p>
-                <p className="mt-1 text-sm">High-priority stories will appear here automatically.</p>
+                <p className="mt-1 text-sm">High-priority stories will appear here as research is prepared.</p>
               </div>
             )}
           </div>

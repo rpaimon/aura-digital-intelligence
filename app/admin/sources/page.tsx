@@ -129,7 +129,7 @@ export default async function SourcesPage({ searchParams }: { searchParams: Sear
             </div>
           </div>
           <div className="hidden items-center gap-2 text-sm font-semibold text-gray-500 sm:flex">
-            <ShieldCheck size={16} /> Staggered discovery · automatic health monitoring
+            <ShieldCheck size={16} /> Staggered discovery · scheduled health monitoring
           </div>
         </div>
       </header>
@@ -150,7 +150,7 @@ export default async function SourcesPage({ searchParams }: { searchParams: Sear
               </div>
               <div>
                 <h2 className="font-black">Add a source</h2>
-                <p className="text-sm text-gray-500">RSS/Atom sources are scheduled automatically.</p>
+                <p className="text-sm text-gray-500">RSS/Atom sources are checked on schedule.</p>
               </div>
             </div>
 
@@ -220,7 +220,7 @@ export default async function SourcesPage({ searchParams }: { searchParams: Sear
                 <h2 className="mt-1 text-2xl font-black">{rows.length} curated sources</h2>
               </div>
               <p className="max-w-lg text-sm leading-6 text-gray-500">
-                The scout checks only sources that are due, in small batches. Broken feeds back off automatically and can be disabled after repeated failures.
+                The scout checks only sources that are due, in small batches. Broken feeds use backoff after failures and can be disabled after repeated failures.
               </p>
             </div>
 
@@ -318,7 +318,7 @@ export default async function SourcesPage({ searchParams }: { searchParams: Sear
                 <div className="rounded-3xl border border-dashed border-[#d7d1c8] bg-white p-12 text-center">
                   <Rss className="mx-auto text-gray-400" />
                   <h3 className="mt-4 font-black">No sources yet</h3>
-                  <p className="mt-2 text-sm text-gray-500">Migration 011 seeds the curated source network automatically.</p>
+                  <p className="mt-2 text-sm text-gray-500">Migration 011 seeds the curated source network.</p>
                 </div>
               )}
             </div>
