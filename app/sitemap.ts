@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 import { articlePath, getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
 
+export const dynamic = "force-dynamic";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (process.env.NEXT_PUBLIC_PUBLIC_INDEXING_ENABLED === "false") return [];
   const base = siteUrl();
