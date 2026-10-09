@@ -61,10 +61,10 @@ export function NewsHeader() {
       </div>
 
       <div className="adi-topic-nav border-t">
-        <div className="adi-topic-nav-track mx-auto flex max-w-[1480px] items-center gap-0 overflow-x-auto px-4 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="adi-topic-nav-track mx-auto flex max-w-[1480px] items-center gap-2 overflow-x-auto px-4 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {ribbon.map(([label, href], index) => (
-            <Link key={href} href={href} className="adi-topic-link flex min-w-max items-center py-3 text-[10px] font-black uppercase tracking-[0.14em] transition">
-              {index > 0 && <span className="adi-topic-divider mr-4">/</span>}
+            <Link key={href} href={href} className="adi-topic-link flex min-h-[44px] min-w-[44px] shrink-0 items-center px-2 py-3 text-[10px] font-black uppercase tracking-[0.14em] transition">
+              {index > 0 && <span className="adi-topic-divider mr-2">/</span>}
               {label}
             </Link>
           ))}

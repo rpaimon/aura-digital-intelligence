@@ -4,7 +4,7 @@ html[data-theme="dark"] {
   --adi-surface: #0d1116;
   --adi-surface-2: #121820;
   --adi-fg: #f5f4ef;
-  --adi-muted: rgba(245,244,239,.52);
+  --adi-muted: rgba(245,244,239,.78);
   --adi-line: rgba(255,255,255,.10);
   --adi-line-strong: rgba(255,255,255,.17);
   --adi-accent: #b9ff66;
@@ -20,7 +20,7 @@ html[data-theme="light"] {
   --adi-surface: #fffdf8;
   --adi-surface-2: #ece8de;
   --adi-fg: #101318;
-  --adi-muted: rgba(16,19,24,.58);
+  --adi-muted: rgba(16,19,24,.78);
   --adi-line: rgba(16,19,24,.12);
   --adi-line-strong: rgba(16,19,24,.20);
   --adi-accent: #315f38;
@@ -153,8 +153,33 @@ html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="borde
 .adi-topic-nav { background: color-mix(in srgb, var(--adi-bg) 97%, transparent); border-color: var(--adi-line); }
 .adi-topic-link { color: var(--adi-muted); }
 .adi-topic-link:hover { color: var(--adi-fg); }
-.adi-topic-divider { color: color-mix(in srgb, var(--adi-muted) 38%, transparent); }
+.adi-topic-divider { color: var(--adi-muted); }
 .adi-topic-fade { background: linear-gradient(90deg, transparent, var(--adi-bg)); }
+
+/* Accessibility: ensure deliberately subtle *text* meets contrast expectations.
+   Scope is public-news UI only; positioning, font sizes and layout are unchanged. */
+.adi-public-shell :is(
+  [class~="text-white/28"],
+  [class~="text-white/36"],
+  [class~="text-white/40"],
+  [class~="text-white/42"],
+  [class~="text-white/45"],
+  [class~="text-white/46"],
+  [class~="text-white/48"],
+  [class~="text-white/50"],
+  [class~="text-white/52"],
+  [class~="text-white/54"],
+  [class~="text-white/55"]
+) { color: var(--adi-muted); }
+
+/* The affected dimmed labels are text, not decoration. */
+.adi-public-shell :is(p, span, a)[class~="opacity-35"],
+.adi-public-shell :is(p, span, a)[class~="opacity-40"],
+.adi-public-shell :is(p, span, a)[class~="opacity-45"],
+.adi-public-shell :is(p, span, a)[class~="opacity-50"],
+.adi-public-shell :is(p, span, a)[class~="opacity-52"],
+.adi-public-shell :is(p, span, a)[class~="opacity-55"] { opacity: .78; }
+
 
 /* Story media and responsive cards */
 .adi-story-card { transition: opacity .22s ease, transform .22s ease; min-width: 0; }
