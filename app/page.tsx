@@ -109,7 +109,7 @@ export default async function Home() {
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-3"><span className="adi-kicker">Top {String(index + 1).padStart(2,"0")}</span><span className="text-[9px] font-black uppercase tracking-[0.13em] text-white/28">{displayCategory(article)}</span></div>
                     <h2 className={`${headlineLengthClass(article.title)} adi-topstory-title adi-title-balance mt-2 font-black`}><Link href={articlePath(article)}>{article.title}</Link></h2>
-                    <Link href={articlePath(article)} className="adi-topstory-readmore">Read more <ArrowUpRight size={12}/></Link>
+                    <Link href={articlePath(article)} className="adi-topstory-readmore">Read more <span className="sr-only">about {article.title}</span><ArrowUpRight size={12}/></Link>
                   </div>
                 </article>
               ))}

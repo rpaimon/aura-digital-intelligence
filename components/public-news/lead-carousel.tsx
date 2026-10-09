@@ -65,7 +65,7 @@ export function LeadCarousel({ slides }: { slides: LeadSlide[] }) {
             <Link href={current.href}>{current.title}</Link>
           </h1>
           {current.summary && <p className="adi-lead-carousel-summary">{current.summary}</p>}
-          <Link href={current.href} className="adi-lead-carousel-readmore">Read more <ArrowRight size={15}/></Link>
+          <Link href={current.href} className="adi-lead-carousel-readmore">Read more <span className="sr-only">about {current.title}</span><ArrowRight size={15}/></Link>
 
           {slides.length > 1 && (
             <div className="adi-lead-progress" aria-hidden="true">
