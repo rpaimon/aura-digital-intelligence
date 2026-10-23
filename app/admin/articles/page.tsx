@@ -82,6 +82,7 @@ export default async function ArticlesPage() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">Publishing engine</p>
             <h1 className="mt-1 text-xl font-black">Articles & Publication</h1>
           </div>
+          <Link href="/admin/editorial" className="rounded-xl bg-[#def3e6] px-3 py-2 text-xs font-black text-[#183e2d]">Write / edit news</Link>
           <Link href="/news" target="_blank" className="hidden items-center gap-2 rounded-xl border border-[#ddd8d0] px-3 py-2 text-xs font-black sm:inline-flex">Public newsroom <ExternalLink size={13} /></Link>
         </div>
       </header>

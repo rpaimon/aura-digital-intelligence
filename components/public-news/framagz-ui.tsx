@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, Clock3 } from "lucide-react";
 import type { PublicArticle } from "@/lib/news/public";
 import { articlePath, displayCategory, readingTime } from "@/lib/news/public";
+import { readerHeadline } from "@/lib/news/editorial-presentation";
 
 export const categoryPalette: Record<string, string> = {
   ai: "#9bdcff",
@@ -57,10 +58,10 @@ export function StoryVisual({ article, className = "" }: { article: PublicArticl
   }
 
   return (
-    <div className={`${className} adi-fallback-visual`} role="img" aria-label={`${category} story from Aura Intelligence`}>
-      <span className="adi-fallback-mark">Aura Intelligence · Fiji</span>
-      <div><div className="adi-fallback-rule" /><p className="adi-fallback-category mt-3">{category}</p></div>
-      <span className="adi-fallback-mark">Verified technology intelligence</span>
+    <div className={`${className} adi-fallback-visual adi-editorial-art`} role="img" aria-label={`Editorial illustration for ${readerHeadline(article)}`}>
+      <span className="adi-fallback-mark">Aura Intelligence / {category}</span>
+      <div className="adi-editorial-art-center"><div className="adi-fallback-rule" /><p className="adi-editorial-art-title">{readerHeadline(article)}</p></div>
+      <span className="adi-fallback-mark">News · Explainers · Fiji & Pacific</span>
     </div>
   );
 }
@@ -77,8 +78,8 @@ export function StoryCard({ article, compact = false }: { article: PublicArticle
           <CategoryChip label={category} />
           <span>{formatNewsDate(article.published_at)}</span>
         </div>
-        <h3 className={`${compact ? "adi-card-title-compact" : "adi-card-title"} ${headlineLengthClass(article.title)} adi-title-balance mt-3 font-black text-white transition group-hover:text-white/72`}>
-          <Link href={articlePath(article)}>{article.title}</Link>
+        <h3 className={`${compact ? "adi-card-title-compact" : "adi-card-title"} ${headlineLengthClass(readerHeadline(article))} adi-title-balance mt-3 font-black text-white transition group-hover:text-white/72`}>
+          <Link href={articlePath(article)}>{readerHeadline(article)}</Link>
         </h3>
         {!compact && article.excerpt && <p className="mt-3 line-clamp-3 text-sm leading-6 text-white/50">{article.excerpt}</p>}
       </div>
@@ -98,8 +99,8 @@ export function StoryRow({ article, showExcerpt = true }: { article: PublicArtic
           <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-white/40">
             <span>{category}</span><span>•</span><span>{formatNewsDate(article.published_at)}</span>
           </div>
-          <h3 className={`adi-row-title ${headlineLengthClass(article.title)} adi-title-balance mt-2 font-black text-white transition group-hover:text-white/72`}>
-            <Link href={articlePath(article)}>{article.title}</Link>
+          <h3 className={`adi-row-title ${headlineLengthClass(readerHeadline(article))} adi-title-balance mt-2 font-black text-white transition group-hover:text-white/72`}>
+            <Link href={articlePath(article)}>{readerHeadline(article)}</Link>
           </h3>
           {showExcerpt && article.excerpt && <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/45">{article.excerpt}</p>}
         </div>
@@ -118,7 +119,7 @@ export function EditorialLead({ article }: { article: PublicArticle }) {
       </Link>
       <div className="flex min-w-0 flex-col justify-center px-4 py-5 sm:px-6 md:px-7 md:py-7">
         <div className="flex flex-wrap items-center gap-3 text-[10px] font-black uppercase tracking-[0.14em] text-white/42"><CategoryChip label={category}/><span>{formatNewsDate(article.published_at)}</span></div>
-        <h2 className={`adi-archive-lead-title ${headlineLengthClass(article.title)} adi-title-balance mt-3 font-black`}><Link href={articlePath(article)}>{article.title}</Link></h2>
+        <h2 className={`adi-archive-lead-title ${headlineLengthClass(readerHeadline(article))} adi-title-balance mt-3 font-black`}><Link href={articlePath(article)}>{readerHeadline(article)}</Link></h2>
         {article.excerpt && <p className="mt-3 line-clamp-3 text-sm leading-6 text-white/48">{article.excerpt}</p>}
         <Link href={articlePath(article)} className="mt-4 inline-flex w-fit items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.13em] text-white/60">Read story <ArrowUpRight size={12}/></Link>
       </div>

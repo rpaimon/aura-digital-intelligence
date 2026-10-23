@@ -1,3 +1,4 @@
+import { readerHeadline } from "@/lib/news/editorial-presentation";
 import { articlePath, getPublishedArticles, siteUrl } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function GET() {
         <news:language>en</news:language>
       </news:publication>
       <news:publication_date>${xml(article.published_at || article.created_at)}</news:publication_date>
-      <news:title>${xml(article.title)}</news:title>
+      <news:title>${xml(readerHeadline(article))}</news:title>
     </news:news>
   </url>`).join("");
 

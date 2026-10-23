@@ -1,3 +1,4 @@
+import { readerHeadline } from "@/lib/news/editorial-presentation";
 import { ImageResponse } from "next/og";
 import { displayCategory, getPublishedArticleBySlug } from "@/lib/news/public";
 
@@ -11,7 +12,7 @@ type Params = Promise<{ slug: string }>;
 export default async function Image({ params }: { params: Params }) {
   const { slug } = await params;
   const article = await getPublishedArticleBySlug(slug);
-  const title = article?.title || "Aura Digital Intelligence";
+  const title = article ? readerHeadline(article) : "Aura Digital Intelligence";
   const category = article ? displayCategory(article) : "Technology";
   const imageUrl = article?.featured_image_url || null;
   const fontSize = title.length >= 105 ? 44 : title.length >= 82 ? 49 : title.length >= 58 ? 55 : 61;

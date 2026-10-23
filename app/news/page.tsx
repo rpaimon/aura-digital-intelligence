@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { ArrowUpRight, Search } from "lucide-react";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
-import { AuraStudioCompact, AuraWideBand } from "@/components/public-news/aura-placement";
+import { AuraStudioCompact } from "@/components/public-news/aura-placement";
 import { EditorialLead, NumberedPick, SectionHeading, StoryCard, StoryRow } from "@/components/public-news/framagz-ui";
-import { getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
+import { articlePath, getPublishedArticles, siteUrl, TOPIC_HUBS } from "@/lib/news/public";
+import { readerHeadline } from "@/lib/news/editorial-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -26,64 +27,51 @@ export default async function NewsPage({ searchParams }: { searchParams: SearchP
   const [lead, ...rest] = articles;
   const grid = rest.slice(0, 6);
   const rows = rest.slice(6);
-  const staffPicks = all.slice(0, 4);
+
+  const fresh = !query ? articles.slice(0, 3) : [];
+  const timestamp = new Intl.DateTimeFormat("en-FJ", { timeZone: "Pacific/Fiji", weekday: "short", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  const sidebar = query ? articles.slice(0, 4) : all.slice(0, 5);
 
   return (
-    <main className="adi-public-shell min-h-screen">
+    <main className="adi-public-shell adi-live-newsroom min-h-screen">
       <NewsHeader />
-
-      <section className="border-b border-white/10">
-        <div className="adi-wide-shell px-4 py-9 sm:px-6 lg:px-8 lg:py-12">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
-            <div><p className="adi-kicker">Newsroom archive</p><h1 className="adi-display mt-3 text-white">All news</h1></div>
-            <form action="/news" method="get" className="flex items-center gap-3 border-b border-white/25 py-2">
-              <Search size={17} className="text-white/40" />
-              <input name="q" defaultValue={q} placeholder="Search stories..." className="min-w-0 flex-1 bg-transparent py-2 text-base font-bold text-white outline-none placeholder:text-white/28" />
-              <button className="text-[10px] font-black uppercase tracking-[0.14em] text-white/55 hover:text-white">Search</button>
-            </form>
-          </div>
-          <div className="mt-7 flex gap-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <Link href="/news" className="shrink-0 text-[10px] font-black uppercase tracking-[0.15em] text-white">All</Link>
-            {TOPIC_HUBS.map((topic) => <Link key={topic.slug} href={`/news/topic/${topic.slug}`} className="shrink-0 text-[10px] font-black uppercase tracking-[0.15em] text-white/42 transition hover:text-white">{topic.label}</Link>)}
-          </div>
-          {query && <p className="mt-5 text-sm text-white/45">{articles.length} result{articles.length === 1 ? "" : "s"} for “{q}”.</p>}
+      <div className="adi-newsroom-topline">
+        <div className="adi-wide-shell flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6 lg:px-8">
+          <span><span className="adi-newsroom-dot" /> THE NEWSROOM <span className="adi-newsroom-divider">/</span> FIJI & THE PACIFIC</span>
+          <time>{timestamp} · FJT</time>
         </div>
-      </section>
-
-      <section className="adi-wide-shell px-0 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
-          <div className="min-w-0">
-            {lead ? (
-              <div className="border-b border-white/10 py-8 sm:py-10">
-                <SectionHeading eyebrow={query ? "Best match" : "Newest"} title={query ? "Top result" : "Lead story"} />
-                <EditorialLead article={lead} />
-              </div>
-            ) : (
-              <div className="px-4 py-16 text-center sm:px-0"><p className="text-2xl font-black">No stories found</p><p className="mt-3 text-sm text-white/45">Try a different search or explore a category.</p></div>
-            )}
-
-            {grid.length > 0 && (
-              <div className="border-b border-white/10 py-8 sm:py-10">
-                <SectionHeading eyebrow="Fresh" title="More from the newsroom" />
-                <div className="adi-story-grid three">{grid.map((article) => <StoryCard key={article.id} article={article} compact />)}</div>
-              </div>
-            )}
-
-            {rows.length > 0 && (
-              <div className="py-8 sm:py-10"><SectionHeading eyebrow="Archive" title="Latest stream" /><div>{rows.map((article) => <StoryRow key={article.id} article={article} />)}</div></div>
-            )}
+      </div>
+      <header className="adi-wide-shell px-4 pb-6 pt-9 sm:px-6 sm:pt-12 lg:px-8">
+        <div className="adi-newsroom-intro">
+          <div>
+            <p className="adi-kicker">Independent technology reporting</p>
+            <h1 className="adi-newsroom-masthead mt-2">The Newsroom<span>.</span></h1>
+            <p className="adi-newsroom-subtitle mt-4">Clear headlines. Verified stories. The technology shaping our world—and what it means for Fiji.</p>
           </div>
-
-          <aside className="border-t border-white/10 px-4 py-8 sm:px-0 lg:sticky lg:top-40 lg:self-start lg:border-t-0 lg:py-10">
-            <p className="adi-kicker">Trending</p><h2 className="mt-2 text-3xl font-black tracking-[-0.055em]">Reader picks</h2>
-            <div className="mt-4">{staffPicks.map((article, index) => <NumberedPick key={article.id} article={article} index={index + 1} />)}</div>
-            <div className="mt-8"><AuraStudioCompact eyebrow="Built by Aura Digital Fiji" /></div>
-            <div className="mt-10 border-t border-white/10 pt-7"><p className="adi-kicker">Why Aura Intelligence</p><p className="mt-3 text-sm leading-7 text-white/48">Global technology reporting filtered for practical relevance to businesses in Fiji and the Pacific.</p><Link href="/editorial-standards" className="mt-5 inline-block text-[10px] font-black uppercase tracking-[0.13em] text-white">How we publish →</Link></div>
-          </aside>
+          <div className="adi-newsroom-count"><span>ON THE DESK</span><strong>{articles.length}</strong><small>{query ? "search results" : "recent stories"}</small></div>
         </div>
-      </section>
-
-      <AuraWideBand title="From technology news to practical implementation." />
+        <div className="adi-newsroom-tools mt-7">
+          <form action="/news" method="get" className="adi-newsroom-search"><Search size={19} aria-hidden="true"/><input aria-label="Search news articles" name="q" defaultValue={q} placeholder="Search the news..." /><button>Search →</button></form>
+          <nav aria-label="Browse news desks" className="adi-newsroom-desks"><Link href="/news" className={!query ? "is-active" : ""}>All stories</Link>{TOPIC_HUBS.map(topic => <Link key={topic.slug} href={`/news/topic/${topic.slug}`}>{topic.shortLabel}</Link>)}</nav>
+        </div>
+        {query && <p className="mt-4 text-sm">Found {articles.length} result{articles.length === 1 ? "" : "s"} for “{q}”.</p>}
+      </header>
+      {!query && fresh.length > 1 && <section className="adi-newsroom-wire border-y border-white/10"><div className="adi-wide-shell flex items-center gap-4 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8"><span className="adi-newsroom-wire-label">LATEST</span>{fresh.map((a) => <Link key={a.id} href={articlePath(a)} className="adi-newsroom-wire-item">{readerHeadline(a)} <ArrowUpRight size={12}/></Link>)}</div></section>}
+      <div className="adi-wide-shell grid gap-0 px-0 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12 lg:px-8">
+        <div className="min-w-0">
+          {lead ? <section className="px-4 pb-8 pt-8 sm:px-0"><SectionHeading eyebrow={query ? "Search results" : "Front page"} title={query ? "Stories found" : "Top story"} /><EditorialLead article={lead}/></section> : <section className="px-4 py-16 text-center"><h2 className="text-2xl font-black">No matching reports</h2><p className="mt-3 text-sm">Try a shorter search term or browse another desk.</p></section>}
+          {grid.length > 0 && <section className="border-t border-white/10 pb-7 pt-8"><SectionHeading eyebrow="On the desk" title="Latest headlines"/><div className="adi-story-grid three">{grid.map((a) => <StoryCard key={a.id} article={a} compact />)}</div></section>}
+          {rows.length > 0 && <section className="border-t border-white/10 py-8"><SectionHeading eyebrow="Continuing coverage" title="News feed"/><div>{rows.map((a) => <StoryRow key={a.id} article={a}/>)}</div></section>}
+        </div>
+        <aside className="adi-newsroom-sidebar border-t border-white/10 px-4 py-8 sm:px-0 lg:sticky lg:top-40 lg:self-start lg:border-t-0">
+          <div className="adi-newsroom-sidebar-heading"><span>THE DAILY BRIEF</span><span>01 — 05</span></div>
+          <h2 className="mt-5 text-2xl font-black tracking-[-.05em]">What to read now</h2>
+          <div className="mt-5">{sidebar.map((a,index) => <NumberedPick key={a.id} article={a} index={index+1}/>)}</div>
+          <div className="adi-newsroom-transparency mt-7"><p className="adi-kicker">Our approach</p><h3 className="mt-3 text-xl font-black">Explained, not exaggerated.</h3><p className="mt-3 text-sm leading-7">We explain cybersecurity and technology stories in everyday language, with linked sources and clear context for people and businesses in Fiji.</p><Link href="/editorial-standards" className="mt-4 inline-block text-sm font-bold underline underline-offset-4">Read our standards ↗</Link></div>
+          <div className="mt-7"><AuraStudioCompact eyebrow="A publication by Aura Digital Fiji"/></div>
+        </aside>
+      </div>
+      <div className="adi-wide-shell px-4 py-6 sm:px-6 lg:px-8"><div className="adi-newsroom-endnote"><span>STAY INFORMED</span><p>Good reporting begins with facts. Explore the full archive, or contact the editorial desk with a correction.</p><Link href="/corrections">Corrections policy ↗</Link></div></div>
       <NewsFooter />
     </main>
   );

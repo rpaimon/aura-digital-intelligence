@@ -47,8 +47,8 @@ export function LeadCarousel({ slides }: { slides: LeadSlide[] }) {
             ) : (
               <div className="adi-lead-carousel-fallback" role="img" aria-label={`${current.category} story from Aura Intelligence`}>
                 <span>Aura Intelligence · Fiji</span>
-                <strong>{current.category}</strong>
-                <span>Verified technology intelligence</span>
+                <strong className="adi-lead-placeholder-title">{current.title}</strong>
+                <span>{current.category} · Aura Intelligence</span>
               </div>
             )}
           </div>
@@ -65,7 +65,7 @@ export function LeadCarousel({ slides }: { slides: LeadSlide[] }) {
             <Link href={current.href}>{current.title}</Link>
           </h1>
           {current.summary && <p className="adi-lead-carousel-summary">{current.summary}</p>}
-          <Link href={current.href} className="adi-lead-carousel-readmore">Read more <ArrowRight size={15}/></Link>
+          <Link href={current.href} className="adi-lead-carousel-readmore">Read more <span className="sr-only">about {current.title}</span><ArrowRight size={15}/></Link>
 
           {slides.length > 1 && (
             <div className="adi-lead-progress" aria-hidden="true">

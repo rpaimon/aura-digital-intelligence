@@ -8,6 +8,7 @@ import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 import { AuraStudioCompact, AuraWideBand } from "@/components/public-news/aura-placement";
 import { ReadingProgress } from "@/components/public-news/reading-progress";
 import { ShareBar } from "@/components/public-news/share-bar";
+import { readerHeadline } from "@/lib/news/editorial-presentation";
 import { articlePath, auraServiceForArticle, canonicalArticleUrl, displayCategory, getPublishedArticleBySlug, getRelatedArticles, getPublishedArticles, readingTime, siteUrl, stripSourcesSection } from "@/lib/news/public";
 
 export const dynamic = "force-dynamic";
@@ -19,16 +20,16 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!article) return { title: "Article not found" };
 
   const canonical = canonicalArticleUrl(article);
-  const title = article.seo_title || article.title;
-  const description = article.seo_description || article.excerpt || "Verified technology intelligence from Aura Digital Intelligence.";
+  const title = readerHeadline(article);
+  const description = article.display_headline ? (article.excerpt || article.seo_description || "Verified technology reporting.") : (article.seo_description || article.excerpt || "Verified technology intelligence from Aura Digital Intelligence.");
   const brandedShareImage = `${canonical}/opengraph-image`;
   const primaryShareImage = brandedShareImage;
   const shareImages = article.featured_image_url
     ? [
-        { url: brandedShareImage, width: 1200, height: 630, type: "image/png", alt: `${article.title} — Aura Digital Intelligence` },
-        { url: article.featured_image_url, alt: article.featured_image_alt || article.title },
+        { url: brandedShareImage, width: 1200, height: 630, type: "image/png", alt: `${readerHeadline(article)} — Aura Digital Intelligence` },
+        { url: article.featured_image_url, alt: article.featured_image_alt || readerHeadline(article) },
       ]
-    : [{ url: brandedShareImage, width: 1200, height: 630, type: "image/png", alt: `${article.title} — Aura Digital Intelligence` }];
+    : [{ url: brandedShareImage, width: 1200, height: 630, type: "image/png", alt: `${readerHeadline(article)} — Aura Digital Intelligence` }];
 
   return {
     title,
@@ -110,7 +111,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "NewsArticle",
-    headline: article.title,
+    headline: readerHeadline(article),
     description: article.seo_description || article.excerpt || undefined,
     datePublished: article.published_at || undefined,
     dateModified: article.updated_at || article.published_at || undefined,
@@ -130,7 +131,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Home", item: siteUrl() },
       { "@type": "ListItem", position: 2, name: "News", item: `${siteUrl()}/news` },
-      { "@type": "ListItem", position: 3, name: article.title, item: canonical },
+      { "@type": "ListItem", position: 3, name: readerHeadline(article), item: canonical },
     ],
   };
 
@@ -154,12 +155,12 @@ export default async function ArticlePage({ params }: { params: Params }) {
                   <span className="hidden sm:inline">•</span>
                   <span className="inline-flex items-center gap-1"><Clock3 size={11}/> {readingTime(content)} min read</span>
                 </div>
-                <h1 className={`adi-article-title ${headlineLengthClass(article.title)} adi-title-balance mt-4`}>{article.title}</h1>
+                <h1 className={`adi-article-title ${headlineLengthClass(readerHeadline(article))} adi-title-balance mt-4`}>{readerHeadline(article)}</h1>
                 {article.subtitle && <p className="mt-4 max-w-4xl text-[1rem] font-semibold leading-7 text-white/54 sm:text-[1.08rem] sm:leading-8">{article.subtitle}</p>}
 
                 <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4">
                   <Link href={`/authors/${authorSlug}`} className="group flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-white text-[10px] font-black text-black">ADI</div><div><p className="text-xs font-black uppercase tracking-[0.06em] group-hover:text-white/70">{authorName}</p><p className="mt-1 text-[9px] font-bold uppercase tracking-[0.1em] text-white/28">Technology Editor · Fiji</p></div></Link>
-                  <ShareBar title={article.title}/>
+                  <ShareBar title={readerHeadline(article)}/>
                 </div>
               </div>
 
@@ -187,9 +188,9 @@ export default async function ArticlePage({ params }: { params: Params }) {
             <aside className="hidden pt-6 lg:block">
               <p className="adi-kicker">Related to this story</p>
               <div className="mt-2 divide-y divide-white/10">
-                {related.slice(0,3).map((item) => <Link key={item.id} href={articlePath(item)} className="block py-4"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-white/34">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight text-white/88">{item.title}</p></Link>)}
+                {related.slice(0,3).map((item) => <Link key={item.id} href={articlePath(item)} className="block py-4"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-white/34">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight text-white/88">{readerHeadline(item)}</p></Link>)}
               </div>
-              <div className="mt-6 border-t border-white/10 pt-5"><p className="adi-kicker">Why trust this report</p><p className="mt-3 text-sm leading-7 text-white/46">Independent-source verification, originality checks and a final quality gate are required before publication.</p></div>
+              <div className="mt-6 border-t border-white/10 pt-5"><p className="adi-kicker">Why trust this report</p><p className="mt-3 text-sm leading-7 text-white/46">{article.editorial_manual ? "This story was written and reviewed by the editorial desk using the linked sources." : "Automated stories pass source verification, originality checks and a final quality gate."}</p></div>
             </aside>
           </div>
         </div>
@@ -215,13 +216,13 @@ export default async function ArticlePage({ params }: { params: Params }) {
             </div>
 
             <aside className="adi-article-sidebar hidden space-y-7 border-l pl-7 lg:block" style={{ borderColor: "var(--adi-reading-line)" }}>
-              {latest.length > 1 && <div className="adi-sidebar-module"><p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-45">Latest intelligence</p><div className="mt-2 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{latest.filter((item)=>item.id!==article.id).slice(0,4).map((item)=><Link key={item.id} href={articlePath(item)} className="block py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-38">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight">{item.title}</p></Link>)}</div></div>}
+              {latest.length > 1 && <div className="adi-sidebar-module"><p className="text-[9px] font-black uppercase tracking-[0.18em] opacity-45">Latest intelligence</p><div className="mt-2 divide-y" style={{ borderColor: "var(--adi-reading-line)" }}>{latest.filter((item)=>item.id!==article.id).slice(0,4).map((item)=><Link key={item.id} href={articlePath(item)} className="block py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-38">{displayCategory(item)}</p><p className="mt-1 text-sm font-black leading-tight">{readerHeadline(item)}</p></Link>)}</div></div>}
 
               <AuraStudioCompact eyebrow="Publisher services" />
 
               <div className="adi-sidebar-module">
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.12em]"><ShieldCheck size={15}/> Publication standard</div>
-                <div className="adi-reading-copy mt-4 space-y-3 text-xs leading-6"><p>Independent-source verification before publication.</p><p>Originality checks protect against excessive phrase overlap.</p><p>Final quality review gates every published story.</p></div>
+                <div className="adi-reading-copy mt-4 space-y-3 text-xs leading-6">{article.editorial_manual ? <><p>Reviewed by a human editor before publication.</p><p>Original source and image credits are linked where applicable.</p><p>Corrections are welcomed through our newsroom contact page.</p></> : <><p>Independent-source verification before publication.</p><p>Originality checks protect against excessive phrase overlap.</p><p>Automated reports must pass the final quality gate.</p></>}</div>
                 <Link href="/editorial-standards" className="mt-4 inline-block text-[10px] font-black uppercase tracking-[0.12em]">Read our standards →</Link>
               </div>
             </aside>

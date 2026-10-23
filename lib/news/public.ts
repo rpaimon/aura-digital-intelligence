@@ -1,8 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deduplicateVisiblePhotos, readerHeadline } from "./editorial-presentation";
 
 export type PublicArticle = {
   id: string;
   story_id?: string | null;
+  editorial_manual?: boolean;
+  display_headline?: string | null;
   slug: string;
   title: string;
   subtitle: string | null;
@@ -66,6 +69,7 @@ export function seoSlugFromTitle(value: string) {
 }
 
 export function publicSlugForArticle(article: Pick<PublicArticle, "title" | "slug">) {
+  if ("editorial_manual" in article && article.editorial_manual) return article.slug;
   return seoSlugFromTitle(article.title) || article.slug;
 }
 
@@ -73,10 +77,9 @@ export function articlePath(article: Pick<PublicArticle, "title" | "slug">) {
   return `/news/${publicSlugForArticle(article)}`;
 }
 
-export function fijiLeadHeadline(article: Pick<PublicArticle, "title">) {
-  const title = String(article.title || "").trim();
-  if (/\bfiji\b/i.test(title)) return title;
-  return `Fiji Brief — ${title}`;
+export function fijiLeadHeadline(article: Pick<PublicArticle, "title" | "display_headline">) {
+  // Never add a Fiji dateline to an overseas news event.
+  return readerHeadline(article);
 }
 
 
@@ -132,18 +135,66 @@ export function topicCategory(slug: string): PublicCategory | null {
   return map[slug] || null;
 }
 
+type ManualPostRow = {
+  id: string; slug: string; title: string; excerpt: string; content: string;
+  category: string; featured_image_url: string | null; featured_image_alt: string | null;
+  featured_image_credit: string | null; source_url: string; source_name: string;
+  published_at: string | null; updated_at: string; created_at: string;
+};
+
+function publicManualPost(post: ManualPostRow): PublicArticle {
+  return {
+    id: post.id, story_id: null, editorial_manual: true, display_headline: post.title,
+    slug: post.slug, title: post.title, subtitle: null, excerpt: post.excerpt,
+    content: post.content, category: post.category, featured_image_url: post.featured_image_url,
+    featured_image_alt: post.featured_image_alt, featured_image_credit: post.featured_image_credit,
+    featured_image_source_url: post.source_url, seo_title: post.title,
+    seo_description: post.excerpt, seo_keywords: null, canonical_url: null,
+    published_at: post.published_at, updated_at: post.updated_at, created_at: post.created_at,
+    authors: null, article_sources: [{ id: post.id, source_url: post.source_url,
+      source_name: post.source_name, source_type: "editorial", citation_text: "Primary source for this human-reviewed report." }],
+  };
+}
+
+async function addHumanPresentation(articles: PublicArticle[]): Promise<PublicArticle[]> {
+  if (!articles.length) return articles;
+  const db = createAdminClient();
+  const ids = articles.filter((a) => !a.editorial_manual).slice(0, 200).map((a) => a.id);
+  if (!ids.length) return articles;
+  const { data, error } = await db.from("editorial_overrides")
+    .select("article_id,display_title,plain_summary,featured_image_url,featured_image_alt,featured_image_credit").in("article_id", ids);
+  if (error) return articles; // Old databases without the optional migration keep working.
+  const map = new Map((data ?? []).map((row) => [row.article_id, row]));
+  return articles.map((a) => {
+    const edit = map.get(a.id);
+    if (!edit) return a;
+    return {
+      ...a, display_headline: edit.display_title || null,
+      excerpt: edit.plain_summary || a.excerpt,
+      featured_image_url: edit.featured_image_url || a.featured_image_url,
+      featured_image_alt: edit.featured_image_alt || a.featured_image_alt,
+      featured_image_credit: edit.featured_image_credit || a.featured_image_credit,
+      featured_image_source_url: edit.featured_image_url || a.featured_image_source_url,
+    };
+  });
+}
+
 export async function getPublishedArticles(limit = 24) {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("articles")
-    .select(listFields)
-    .eq("status", "published")
-    .not("published_at", "is", null)
-    .order("published_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as PublicArticle[];
+  const [automated, manual] = await Promise.all([
+    supabase.from("articles").select(listFields).eq("status", "published")
+      .not("published_at", "is", null).order("published_at", { ascending: false }).limit(limit),
+    supabase.from("editorial_posts").select("id,slug,title,excerpt,content,category,featured_image_url,featured_image_alt,featured_image_credit,source_url,source_name,published_at,updated_at,created_at")
+      .eq("status", "published").not("published_at", "is", null)
+      .order("published_at", { ascending: false }).limit(limit),
+  ]);
+  if (automated.error) throw new Error(automated.error.message);
+  // A site without migration 019 still serves the entire original automated feed.
+  const automatic = (automated.data ?? []) as unknown as PublicArticle[];
+  const editorial = manual.error ? [] : (manual.data ?? []).map((post) => publicManualPost(post as ManualPostRow));
+  const combined = await addHumanPresentation([...automatic, ...editorial]);
+  combined.sort((a, b) => new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime());
+  return deduplicateVisiblePhotos(combined.slice(0, limit));
 }
 
 async function getArticleByStoredSlug(slug: string) {
@@ -160,15 +211,38 @@ async function getArticleByStoredSlug(slug: string) {
   return (data ?? null) as unknown as PublicArticle | null;
 }
 
-export async function getPublishedArticleBySlug(slug: string) {
-  const exact = await getArticleByStoredSlug(slug);
-  if (exact) return exact;
+/** Prefer a fresh branded headline artwork over a photograph already used by a newer
+ * generated article. This is presentation only; no image records are modified. */
+async function suppressOlderDuplicateArticlePhoto(article: PublicArticle): Promise<PublicArticle> {
+  if (!article.featured_image_url || !article.published_at) return article;
+  const db = createAdminClient();
+  const { data, error } = await db.from("articles").select("id")
+    .eq("status", "published")
+    .eq("featured_image_url", article.featured_image_url)
+    .gt("published_at", article.published_at)
+    .limit(1);
+  return !error && data?.length ? {
+    ...article, featured_image_url: null, featured_image_credit: null,
+    featured_image_source_url: null,
+  } : article;
+}
 
-  // Public links use short, readable SEO slugs without mutating old database rows.
+export async function getPublishedArticleBySlug(slug: string) {
+  const db = createAdminClient();
+  const { data: manual, error: manualError } = await db.from("editorial_posts")
+    .select("id,slug,title,excerpt,content,category,featured_image_url,featured_image_alt,featured_image_credit,source_url,source_name,published_at,updated_at,created_at")
+    .eq("status", "published").eq("slug", slug).maybeSingle();
+  if (!manualError && manual) return suppressOlderDuplicateArticlePhoto(publicManualPost(manual as ManualPostRow));
+
+  const exact = await getArticleByStoredSlug(slug);
+  if (exact) return suppressOlderDuplicateArticlePhoto((await addHumanPresentation([exact]))[0]);
+
+  // Preserve the original automated article lookup and existing SEO paths.
   const recent = await getPublishedArticles(250);
-  const match = recent.find((article) => publicSlugForArticle(article) === slug);
+  const match = recent.find((article) => !article.editorial_manual && publicSlugForArticle(article) === slug);
   if (!match) return null;
-  return getArticleByStoredSlug(match.slug);
+  const original = await getArticleByStoredSlug(match.slug);
+  return original ? suppressOlderDuplicateArticlePhoto((await addHumanPresentation([original]))[0]) : null;
 }
 
 export async function getRelatedArticles(articleId: string, category: string | null, limit = 3) {

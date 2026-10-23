@@ -4,7 +4,7 @@ html[data-theme="dark"] {
   --adi-surface: #0d1116;
   --adi-surface-2: #121820;
   --adi-fg: #f5f4ef;
-  --adi-muted: rgba(245,244,239,.52);
+  --adi-muted: rgba(245,244,239,.78);
   --adi-line: rgba(255,255,255,.10);
   --adi-line-strong: rgba(255,255,255,.17);
   --adi-accent: #b9ff66;
@@ -20,7 +20,7 @@ html[data-theme="light"] {
   --adi-surface: #fffdf8;
   --adi-surface-2: #ece8de;
   --adi-fg: #101318;
-  --adi-muted: rgba(16,19,24,.58);
+  --adi-muted: rgba(16,19,24,.78);
   --adi-line: rgba(16,19,24,.12);
   --adi-line-strong: rgba(16,19,24,.20);
   --adi-accent: #315f38;
@@ -50,11 +50,36 @@ html[data-theme="light"] .adi-public-shell [class*="border-white"] { border-colo
 html[data-theme="light"] .adi-public-shell [class*="bg-[#080a0d]"] { background: var(--adi-bg) !important; }
 html[data-theme="light"] .adi-public-shell [class*="bg-[#f1eee6]"] { background: var(--adi-reading) !important; color: var(--adi-reading-fg) !important; }
 
+/* Black surfaces must keep white lettering in the light theme (e.g. the
+   contact form submit button and the ADI author badge). */
+html[data-theme="light"] .adi-public-shell .bg-black.text-white { color: #fff !important; }
+
 html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] { background: var(--adi-reading) !important; color: var(--adi-reading-fg) !important; }
 html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"][class*="text-black"],
 html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="text-black"] { color: var(--adi-reading-fg) !important; }
 html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="text-black/"] { color: var(--adi-reading-muted) !important; }
 html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="border-black"] { border-color: var(--adi-reading-line) !important; }
+
+/* Public-page contrast: keep low-alpha text legible on the light reading panels.
+   The dark-theme equivalent is handled by the existing theme bridge above. */
+html[data-theme="light"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="text-black/"] {
+  color: var(--adi-reading-muted) !important;
+}
+.adi-public-shell .adi-reading-surface [class*="text-black/"] {
+  color: var(--adi-reading-muted) !important;
+}
+/* This band changes its text color with the theme; dimmed black utility text
+   must inherit that foreground instead of disappearing on its accent color. */
+.adi-public-shell .adi-aura-band [class*="text-black/"] { color: inherit !important; }
+/* The footer stays dark in both themes, even when the main pages turn light. */
+html[data-theme="light"] .adi-public-shell .adi-footer [class*="text-white/"] {
+  color: #f5f4ef !important;
+}
+/* Contact form placeholders are text rather than decorative graphics. */
+.adi-public-shell :is(input, textarea)[class*="placeholder:text-black/30"]::placeholder {
+  color: var(--adi-reading-muted);
+  opacity: 1;
+}
 
 .adi-noise {
   background:
@@ -153,8 +178,48 @@ html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="borde
 .adi-topic-nav { background: color-mix(in srgb, var(--adi-bg) 97%, transparent); border-color: var(--adi-line); }
 .adi-topic-link { color: var(--adi-muted); }
 .adi-topic-link:hover { color: var(--adi-fg); }
-.adi-topic-divider { color: color-mix(in srgb, var(--adi-muted) 38%, transparent); }
+.adi-topic-divider { color: var(--adi-muted); }
 .adi-topic-fade { background: linear-gradient(90deg, transparent, var(--adi-bg)); }
+
+/* Accessibility: ensure deliberately subtle *text* meets contrast expectations.
+   Scope is public-news UI only; positioning, font sizes and layout are unchanged. */
+.adi-public-shell :is(
+  [class~="text-white/16"],
+  [class~="text-white/28"],
+  [class~="text-white/34"],
+  [class~="text-white/36"],
+  [class~="text-white/38"],
+  [class~="text-white/40"],
+  [class~="text-white/42"],
+  [class~="text-white/45"],
+  [class~="text-white/46"],
+  [class~="text-white/48"],
+  [class~="text-white/50"],
+  [class~="text-white/52"],
+  [class~="text-white/54"],
+  [class~="text-white/55"]
+) { color: var(--adi-muted); }
+
+/* The affected dimmed labels are text, not decoration. */
+.adi-public-shell :is(p, span, a)[class~="opacity-35"],
+.adi-public-shell :is(p, span, a)[class~="opacity-38"],
+.adi-public-shell :is(p, span, a)[class~="opacity-40"],
+.adi-public-shell :is(p, span, a)[class~="opacity-45"],
+.adi-public-shell :is(p, span, a)[class~="opacity-50"],
+.adi-public-shell :is(p, span, a)[class~="opacity-52"],
+.adi-public-shell :is(p, span, a)[class~="opacity-55"],
+.adi-public-shell :is(p, span, a)[class~="opacity-60"],
+.adi-public-shell :is(p, span, a)[class~="opacity-65"] { opacity: .88; }
+
+/* Footer columns dim entire containers, so fixing only child text is not
+   sufficient: raise group contrast without affecting spacing or layout. */
+.adi-public-shell .adi-footer :is(
+  [class~="opacity-35"],
+  [class~="opacity-40"],
+  [class~="opacity-52"],
+  [class~="opacity-60"]
+) { opacity: .9; }
+
 
 /* Story media and responsive cards */
 .adi-story-card { transition: opacity .22s ease, transform .22s ease; min-width: 0; }
@@ -172,7 +237,7 @@ html[data-theme="dark"] .adi-public-shell [class*="bg-[#f1eee6]"] [class*="borde
     linear-gradient(145deg, #111821, #07090c 72%);
   color: #fff;
 }
-.adi-fallback-mark { font-size: .58rem; font-weight: 900; letter-spacing: .2em; text-transform: uppercase; opacity: .48; }
+.adi-fallback-mark { font-size: .58rem; font-weight: 900; letter-spacing: .2em; text-transform: uppercase; opacity: .86; }
 .adi-fallback-category { font-size: .67rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; color: #b9ff66; }
 .adi-fallback-rule { width: 42%; height: 2px; background: rgba(255,255,255,.7); }
 
@@ -642,6 +707,13 @@ html[data-theme="light"] .adi-aura-band { color: #fff; }
   justify-content: flex-start;
 }
 
+/* The carousel's category and date share an opacity-55 parent.  Text color
+   overrides on the children alone cannot counter parent opacity. */
+.adi-lead-carousel-copy > div:first-child {
+  opacity: 1;
+  color: var(--adi-muted);
+}
+
 .adi-lead-carousel-copy-animate {
   animation: adi-lead-copy-in .62s cubic-bezier(.2,.65,.25,1) both;
 }
@@ -741,7 +813,7 @@ html[data-theme="light"] .adi-aura-band { color: #fff; }
   font-weight: 950;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--adi-fg) 62%, transparent);
+  color: var(--adi-muted);
 }
 
 @keyframes adi-lead-media-in {
@@ -869,7 +941,7 @@ html[data-theme="light"] .adi-aura-band { color: #fff; }
   letter-spacing: .08em;
   transition: opacity .2s ease, transform .2s ease;
 }
-.adi-aura-service-grid a:hover { opacity: .72; transform: translateX(2px); }
+.adi-aura-service-grid a:hover { opacity: .9; transform: translateX(2px); }
 .adi-aura-service-grid span { color: var(--adi-muted); font-size: .58rem; }
 .adi-aura-studio-cta {
   display: inline-flex;
@@ -914,8 +986,9 @@ html[data-theme="light"] .adi-aura-studio {
   text-transform: uppercase;
 }
 .adi-aura-strip-brand { letter-spacing: .11em; }
-.adi-aura-strip-link { letter-spacing: .09em; opacity: .58; font-weight: 900; transition: opacity .18s ease; }
-.adi-aura-strip-link:hover { opacity: 1; }
+.adi-aura-strip-link { letter-spacing: .09em; opacity: 1; color: var(--adi-muted); font-weight: 900; transition: color .18s ease; }
+.adi-aura-strip-brand > span[class~="opacity-45"] { opacity: 1; color: var(--adi-muted); }
+.adi-aura-strip-link:hover { color: var(--adi-fg); }
 .adi-aura-strip-rule { width: 1px; height: 1rem; background: var(--adi-line-strong); }
 
 .adi-aura-studio-compact { padding: 1.05rem; border-radius: 1rem; }
@@ -932,7 +1005,7 @@ html[data-theme="light"] .adi-aura-studio {
   color: var(--adi-fg);
 }
 .adi-aura-wide-band a { color: var(--adi-fg); }
-.adi-aura-wide-band a:hover { opacity: .65; }
+.adi-aura-wide-band a:hover { opacity: .9; }
 .adi-aura-inline-secondary {
   border-top-width: 1px;
   background: color-mix(in srgb, var(--adi-reading-fg) 3%, transparent);
@@ -945,3 +1018,42 @@ html[data-theme="light"] .adi-aura-studio {
   .adi-aura-strip-brand, .adi-aura-strip-link { font-size: .54rem; }
   .adi-aura-wide-band .adi-wide-shell { padding-top: 1.35rem; padding-bottom: 1.35rem; }
 }
+
+/* v2.16 public newsroom redesign: scoped to /news, never admin or pipeline. */
+.adi-live-newsroom .adi-newsroom-topline {border-bottom:1px solid var(--adi-line);background:var(--adi-surface);font-size:.66rem;font-weight:850;letter-spacing:.13em;color:var(--adi-muted)}
+.adi-live-newsroom .adi-newsroom-dot {display:inline-block;height:7px;width:7px;border-radius:99px;background:var(--adi-accent);margin-right:8px}
+.adi-live-newsroom .adi-newsroom-divider {margin:0 10px;color:var(--adi-accent)}
+.adi-newsroom-intro {display:flex;justify-content:space-between;align-items:end;gap:22px}
+.adi-newsroom-masthead {font-size:clamp(2.6rem,7vw,6.3rem);line-height:.91;letter-spacing:-.075em;font-weight:950;color:var(--adi-fg)}
+.adi-newsroom-masthead span {color:var(--adi-accent)}
+.adi-newsroom-subtitle {max-width:640px;font-size:clamp(.98rem,1.8vw,1.2rem);line-height:1.55;color:var(--adi-muted)}
+.adi-newsroom-count {text-align:right;display:flex;flex-direction:column;min-width:100px;align-items:flex-end}
+.adi-newsroom-count span,.adi-newsroom-count small{font-size:.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--adi-muted);font-weight:850}
+.adi-newsroom-count strong{font-size:clamp(2.4rem,5vw,4.6rem);line-height:1.1;font-weight:950;letter-spacing:-.08em;color:var(--adi-fg)}
+.adi-newsroom-tools {border-block:1px solid var(--adi-line);display:grid;grid-template-columns:minmax(220px,350px) minmax(0,1fr);align-items:center;gap:16px}
+.adi-newsroom-search{display:flex;gap:9px;align-items:center;color:var(--adi-muted);min-width:0;padding:12px 0}
+.adi-newsroom-search input{width:100%;min-width:0;flex:1;background:transparent;color:var(--adi-fg);outline:none;font-size:.85rem}
+.adi-newsroom-search input::placeholder{color:var(--adi-muted)}
+.adi-newsroom-search button{color:var(--adi-fg);font-size:.72rem;font-weight:850;white-space:nowrap}
+.adi-newsroom-desks{display:flex;gap:0;overflow-x:auto;scrollbar-width:none;align-items:center}
+.adi-newsroom-desks::-webkit-scrollbar{display:none}
+.adi-newsroom-desks a{color:var(--adi-muted);padding:14px 12px;min-height:44px;display:flex;align-items:center;white-space:nowrap;text-transform:uppercase;font-size:.64rem;font-weight:850;letter-spacing:.08em}
+.adi-newsroom-desks a:hover,.adi-newsroom-desks a.is-active{color:var(--adi-fg);box-shadow:inset 0 -2px var(--adi-accent)}
+.adi-newsroom-wire {background:var(--adi-surface)}
+.adi-newsroom-wire-label{font-size:.68rem;letter-spacing:.14em;font-weight:950;color:var(--adi-accent);flex:0 0 auto}
+.adi-newsroom-wire-item{display:flex;align-items:center;gap:7px;padding-left:18px;border-left:1px solid var(--adi-line);font-size:.77rem;font-weight:800;line-height:1.35;min-width:190px;max-width:300px;flex:1 0 190px;color:var(--adi-fg)}
+.adi-newsroom-sidebar-heading{display:flex;justify-content:space-between;gap:10px;border-bottom:2px solid var(--adi-accent);padding-bottom:12px;font-size:.65rem;font-weight:900;letter-spacing:.12em;color:var(--adi-muted)}
+.adi-newsroom-transparency{background:var(--adi-surface-2);border:1px solid var(--adi-line);padding:22px;color:var(--adi-fg)}
+.adi-newsroom-transparency p:not(.adi-kicker){color:var(--adi-muted)}
+.adi-newsroom-endnote{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:20px;border-top:1px solid var(--adi-line);padding-top:22px;color:var(--adi-muted);font-size:.8rem}
+.adi-newsroom-endnote span{font-size:.65rem;letter-spacing:.12em;font-weight:900;color:var(--adi-accent)}
+.adi-newsroom-endnote a{color:var(--adi-fg);font-weight:850;white-space:nowrap}
+.adi-editorial-art{padding:18px;justify-content:space-between;gap:16px}
+.adi-editorial-art-center{min-width:0;max-width:100%}
+.adi-editorial-art-title{font-size:clamp(.83rem,1.65vw,1.6rem);line-height:1.15;letter-spacing:-.035em;font-weight:900;max-width:26ch;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.adi-lead-placeholder-title{font-size:clamp(1.4rem,3vw,2.7rem)!important;line-height:1.06!important;max-width:23ch}
+.adi-topstory-noimage{height:100%;width:100%;display:flex;flex-direction:column;justify-content:space-between;gap:10px;padding:15px;background:linear-gradient(145deg,#152e28,#0e111a);color:#f5f9f3}
+.adi-topstory-noimage span{font-size:.55rem;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#b9ff66}
+.adi-topstory-noimage strong{font-size:.85rem;line-height:1.17;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+@media(max-width:800px){.adi-newsroom-tools{grid-template-columns:1fr;gap:0}.adi-newsroom-search{border-bottom:1px solid var(--adi-line)}.adi-newsroom-intro{align-items:start}.adi-newsroom-count{min-width:65px}.adi-newsroom-count strong{font-size:2.4rem}.adi-newsroom-endnote{grid-template-columns:1fr;gap:10px}}
+@media(max-width:480px){.adi-newsroom-masthead{font-size:clamp(2.6rem,11.5vw,4.2rem)}.adi-newsroom-subtitle{font-size:.92rem}.adi-newsroom-wire-item{flex-basis:210px}.adi-newsroom-count{display:none}.adi-newsroom-desks a{padding:12px 13px}.adi-editorial-art-title{font-size:1.02rem}}

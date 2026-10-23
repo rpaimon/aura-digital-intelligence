@@ -41,6 +41,7 @@ export default async function DashboardPage() {
             <p className="mt-2 text-sm text-gray-500">Signed in as {user.email}. Monitor discovery, verification, publication and traffic from one place.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/admin/editorial" className="rounded-xl border border-[#cee3d5] bg-[#e4f3e8] px-4 py-2.5 text-xs font-black text-[#183d2a]">Editorial desk +</Link>
             <Link href="/admin/articles" className="rounded-xl bg-[#11151b] px-4 py-2.5 text-xs font-black text-white">Review articles</Link>
             <Link href="/news" target="_blank" className="inline-flex items-center gap-2 rounded-xl border border-[#dfe3e8] bg-white px-4 py-2.5 text-xs font-black">Open newsroom <ArrowUpRight size={13}/></Link>
           </div>

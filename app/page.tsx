@@ -5,6 +5,7 @@ import { LeadCarousel } from "@/components/public-news/lead-carousel";
 import { NewsFooter, NewsHeader } from "@/components/public-news/news-shell";
 import { NumberedPick, SectionHeading, StoryCard, StoryRow, formatNewsDate, headlineLengthClass } from "@/components/public-news/framagz-ui";
 import { articlePath, displayCategory, fijiLeadHeadline, getPublishedArticles, siteUrl } from "@/lib/news/public";
+import { readerHeadline } from "@/lib/news/editorial-presentation";
 
 export const dynamic = "force-dynamic";
 
@@ -100,16 +101,16 @@ export default async function Home() {
             <div className="grid sm:grid-cols-2 xl:grid-cols-4">
               {topStories.map((article, index) => (
                 <article key={article.id} className={`adi-topstory-card adi-story-card group ${index ? "border-t sm:border-l sm:border-t-0" : ""} border-white/10`}>
-                  <Link href={articlePath(article)} className="adi-topstory-thumb" aria-label={`Read ${article.title}`}>
+                  <Link href={articlePath(article)} className="adi-topstory-thumb" aria-label={`Read ${readerHeadline(article)}`}>
                     {article.featured_image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={article.featured_image_url} alt={article.featured_image_alt || article.title} />
-                    ) : <span aria-hidden="true">ADI</span>}
+                    ) : <span className="adi-topstory-noimage" aria-hidden="true"><span>ADI / {displayCategory(article)}</span><strong>{readerHeadline(article)}</strong></span>}
                   </Link>
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-3"><span className="adi-kicker">Top {String(index + 1).padStart(2,"0")}</span><span className="text-[9px] font-black uppercase tracking-[0.13em] text-white/28">{displayCategory(article)}</span></div>
-                    <h2 className={`${headlineLengthClass(article.title)} adi-topstory-title adi-title-balance mt-2 font-black`}><Link href={articlePath(article)}>{article.title}</Link></h2>
-                    <Link href={articlePath(article)} className="adi-topstory-readmore">Read more <ArrowUpRight size={12}/></Link>
+                    <h2 className={`${headlineLengthClass(readerHeadline(article))} adi-topstory-title adi-title-balance mt-2 font-black`}><Link href={articlePath(article)}>{readerHeadline(article)}</Link></h2>
+                    <Link href={articlePath(article)} className="adi-topstory-readmore">Read more <span className="sr-only">about {article.title}</span><ArrowUpRight size={12}/></Link>
                   </div>
                 </article>
               ))}
